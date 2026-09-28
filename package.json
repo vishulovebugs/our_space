@@ -1,0 +1,29 @@
+{
+  "name": "our_space",
+  "version": "1.0.0",
+  "description": "Scalable 2D multiplayer pixel-avatar chat room server",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vishulovebugs/our_space.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vishulovebugs/our_space/issues"
+  },
+  "homepage": "https://github.com/vishulovebugs/our_space#readme",
+  "dependencies": {
+    "@colyseus/monitor": "^0.18.6",
+    "@colyseus/schema": "^5.0.34",
+    "colyseus": "^0.18.8",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  }
+}
