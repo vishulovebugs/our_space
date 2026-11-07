@@ -95,3 +95,69 @@ input {
 .hint {
   color: var(--muted);
 }
+
+/* Character creator */
+.preview {
+  display: block;
+  width: 160px;
+  height: 240px;
+  margin: 0 auto 20px;
+  background: #14141f;
+  border: 3px solid #34344a;
+  image-rendering: pixelated;
+}
+
+.pickers {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.picker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.picker button {
+  padding: 8px 14px;
+}
+
+.swatches {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.swatch-row {
+  display: grid;
+  gap: 6px;
+}
+
+.swatch-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.swatch-buttons button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 3px solid #34344a;
+  cursor: pointer;
+}
+
+.swatch-buttons button[aria-pressed="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.actions button {
+  flex: 1;
+}

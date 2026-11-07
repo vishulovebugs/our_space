@@ -12,8 +12,10 @@ vi.mock("./lib/supabase.js", () => ({
       signInWithPassword: vi.fn(),
     },
     from: () => ({
-      select: () => ({ eq: vi.fn() }),
-      insert: vi.fn(),
+      select: () => ({
+        eq: () => ({ single: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+      }),
+      update: () => ({ eq: vi.fn().mockResolvedValue({ error: null }) }),
     }),
   },
 }));

@@ -5,6 +5,7 @@
   "main": "./constants.js",
   "exports": {
     ".": "./constants.js",
+    "./character.js": "./character.js",
     "./validators.js": "./validators.js"
   },
   "scripts": {
