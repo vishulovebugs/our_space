@@ -1,12 +1,29 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App.jsx";
 
+vi.mock("./lib/supabase.js", () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      signOut: vi.fn(),
+      signUp: vi.fn(),
+      signInWithPassword: vi.fn(),
+    },
+    from: () => ({
+      select: () => ({ eq: vi.fn() }),
+      insert: vi.fn(),
+    }),
+  },
+}));
+
+afterEach(cleanup);
+
 describe("App", () => {
-  it("renders the Pixel Hall title", () => {
+  it("renders the Pixel Hall title", async () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "Pixel Hall" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Pixel Hall" })).toBeDefined();
   });
 });

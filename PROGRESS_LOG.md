@@ -5,7 +5,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 |--------|-------|--------|--------|-------------------|------|
 | 0 | Project rules and progress log | done | this commit (chore: add project rules (CLAUDE.md) and progress log) | 0/0 | 2026-11-08 |
 | 1 | Monorepo scaffold (npm workspaces, Vitest) | done | this commit (feat: monorepo scaffold with client, server, shared) | 5/0 | 2026-11-08 |
-| 2 | Auth: sign up / sign in with unique usernames | not started | - | - | - |
+| 2 | Auth: sign up / sign in with unique usernames | done | this commit (feat: auth with unique usernames) | 25/0 | 2026-11-08 |
 | 3 | Pixel character designer | not started | - | - | - |
 | 4 | The hall: movement, curved couch, 5 seats | not started | - | - | - |
 | 5 | Dark chat space (/t, /q) | not started | - | - | - |
@@ -71,6 +71,45 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - The "hall" room is registered but has no state, no seats and no clients yet, by design for this prompt.
   - Prompt titles 2-13 in the status board are still provisional.
 - Next prompt: 2
+
+### Prompt 2 - Auth with unique usernames  (2026-11-08 00:30)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: auth with unique usernames"
+- What was built:
+  - server/db/schema.sql - citext extension, profiles table (id, username citext unique, character jsonb, created_at), username_format check constraint, RLS: select for anon+authenticated, insert/update only own row
+  - shared/validators.js - USERNAME_PATTERN, validateUsername, validatePassword (min 8), plus validators.test.js including a drift guard against schema.sql
+  - client/src/lib/supabase.js - browser client from VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+  - client/src/pages/Login.jsx - two modes, live debounced username availability check, inline validation, pixel theme; Welcome.jsx + App.jsx session restore and Log out; styles.css with "Press Start 2P"
+  - client/src/pages/Login.test.jsx and updated App.test.jsx (Supabase client mocked)
+  - server/auth.js - verifyToken: test tokens in NODE_ENV=test, HS256 Supabase JWT verification otherwise; auth.test.js
+  - client/.env.example and server/.env.example extended with the Supabase values
+- Tests: 25 passed, 0 failed - client 4 (App.test.jsx 1, pages/Login.test.jsx 3), server 8 (server.test.js 1, auth.test.js 7), shared 13 (constants.test.js 3, validators.test.js 10). `npm run build --workspace client` exits 0.
+- Decisions made:
+  - Supabase JWTs are verified as HS256 with SUPABASE_JWT_SECRET using node:crypto: no network call, no new dependency. Asymmetric (ES256/RS256) signing keys are not supported yet - recorded as TODO for Prompt 12.
+  - The username comes from user_metadata.username in the token payload (null when absent).
+  - The test bypass reads NODE_ENV on every call, not at import time, so a test build cannot arm it in a normal server.
+  - The create-account form inserts the profiles row immediately after signUp because the insert policy requires auth.uid() = id; with email confirmation enabled there is no session yet, so the form tells the user to confirm first.
+  - Availability uses .eq() on the citext column (case-insensitive by type) instead of ilike, which avoids pattern-escaping holes.
+  - The select policy covers anon as well as authenticated because the availability check runs before sign-in.
+  - Added @supabase/supabase-js to the client, and declared @pixel-hall/shared as a dependency of client and server now that both import it.
+  - shared/package.json now exposes "./validators.js" in its exports map.
+  - The login screen keeps the <h1>Pixel Hall</h1> heading, so the Prompt 1 App test still asserts the real UI.
+- Deviations: none
+- Problems hit and fixes:
+  - First run of the suite failed: "./validators.js" is not exported under the conditions [...] from package @pixel-hall/shared. Root cause: the exports map only declared ".". Fix: added "./validators.js"; suite green afterwards.
+  - Two .env.example writes failed through the editor patch path; they were rewritten from the shell.
+- Manual checks for the human:
+  1. Supabase -> Project settings -> API: put the Project URL and anon key in client/.env (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) and the JWT secret in server/.env (SUPABASE_JWT_SECRET). Both .env files are git-ignored.
+  2. Supabase -> Authentication -> Sign In / Providers -> Email: turn OFF "Confirm email" (otherwise no session is returned and the profile row is not created).
+  3. Supabase -> SQL editor: run server/db/schema.sql once.
+  4. `npm run dev`, open http://localhost:5173.
+  5. Create account "Pixel_Cat" with any email and an 8+ character password - you should land on "Welcome, Pixel_Cat".
+  6. Log out, then Create account with "pixel_cat" (and again with "PIXEL_CAT"): the form must show "Username taken" with submit disabled.
+- Known issues / TODO for later:
+  - Email confirmation must stay off until a confirmation flow exists (no profile row is created when signUp returns no session).
+  - Only HS256 JWTs are verified; if the Supabase project uses asymmetric signing keys, verification will fail until Prompt 12 adds JWKS support.
+  - The character column exists but nothing writes it yet (Prompt 3).
+- Next prompt: 3
 
 ## Decisions and changes
 - 2026-11-08 - User instruction: commit after every phase (in addition to the one-commit-per-prompt rule in section 5). Applied from Prompt 0 onward.
