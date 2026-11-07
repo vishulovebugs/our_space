@@ -112,10 +112,10 @@ const ACCESSORIES = {
 
 /**
  * @param {{ body: string, hair: string, outfit: string, accessory: string, colors: { skin: string, hair: string, outfit: string } }} character
- * @param {{ direction?: string, frame?: number }} [pose]
+ * @param {{ direction?: string, frame?: number, sitting?: boolean }} [pose]
  * @returns {Uint8ClampedArray} RGBA pixels, SPRITE_WIDTH * SPRITE_HEIGHT * 4 long
  */
-export function buildCharacterPixels(character, { direction = "down", frame = 0 } = {}) {
+export function buildCharacterPixels(character, { direction = "down", frame = 0, sitting = false } = {}) {
   const buffer = new Uint8ClampedArray(SPRITE_WIDTH * SPRITE_HEIGHT * 4);
 
   const body = BODIES[character?.body] ?? BODIES.slim;
@@ -133,7 +133,9 @@ export function buildCharacterPixels(character, { direction = "down", frame = 0 
   const pose = mirrored ? "left" : direction;
   const swing = walkSwing(frame);
 
-  const legs = body.legs.map((leg, index) => shifted(leg, swing.legs[index]));
+  const legs = sitting
+    ? sitLegs(body)
+    : body.legs.map((leg, index) => shifted(leg, swing.legs[index]));
   const arms = body.arms.map((arm, index) => shifted(arm, swing.arms[index]));
 
   fillRect(buffer, body.neck, skin);
@@ -161,6 +163,16 @@ function walkSwing(frame) {
   if (frame === 1) return { legs: [-1, 0], arms: [0, -1] };
   if (frame === 2) return { legs: [0, -1], arms: [-1, 0] };
   return { legs: [0, 0], arms: [0, 0] };
+}
+
+/** Knees up in front of the torso instead of hanging down. */
+function sitLegs(body) {
+  const kneeY = body.torso.y + body.torso.h - 2;
+
+  return [
+    { x: body.torso.x - 1, y: kneeY, w: 3, h: 3 },
+    { x: body.torso.x + body.torso.w - 2, y: kneeY, w: 3, h: 3 },
+  ];
 }
 
 function drawFace(buffer, head, pose) {

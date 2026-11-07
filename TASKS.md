@@ -3,15 +3,14 @@
 Short to-do for the current phase. The authoritative, append-only record is
 `PROGRESS_LOG.md`; the rules are in `CLAUDE.md`.
 
-## Prompt 5 - Multiplayer hall
+## Prompt 6 - Couch seats
 
-- [x] server/src/state/HallState.js: Player + HallState with defineTypes
-- [x] server/src/rooms/HallRoom.js: onAuth, single session per user, validated moves, snap
-- [x] shared: PLAYER_SPEED + isStandablePosition so client and server agree
-- [x] client: join hall, remote players, interpolation, reconnect overlay
-- [x] Tests: @colyseus/testing suite (join, move, wall, teleport, dup user, leave, 31st)
+- [x] shared: seat anchors with a facing direction, seatAnchor/seatStandTile/isSeatIndex/seatedPlayers
+- [x] server: "sit" and "stand" with range, free-seat and index validation; moves ignored while seated
+- [x] client: "Press E to sit" prompt, seated pose, E/Esc to stand, bridge events
+- [x] Tests: sit, taken seat, too far, move ignored, stand/disconnect frees seat, invalid indexes
 - [x] Run the whole suite, update PROGRESS_LOG.md, commit
 
 ## Next
 
-- [ ] Prompt 6 - see the status board in PROGRESS_LOG.md (not started)
+- [ ] Prompt 7 - see the status board in PROGRESS_LOG.md (not started)

@@ -11,13 +11,17 @@ export const HALL_ROWS = 20;
 export const HALL_WIDTH = HALL_COLUMNS * TILE_SIZE;
 export const HALL_HEIGHT = HALL_ROWS * TILE_SIZE;
 
-/** The curved couch: five cushions along an arc, each with a back behind it. */
+/**
+ * The curved couch: five cushions along an arc, each with a back behind it.
+ * `facing` is the direction a seated player looks - the couch back is north,
+ * so every cushion faces the room to the south.
+ */
 export const SEATS = [
-  { id: "seat-1", x: 10, y: 11 },
-  { id: "seat-2", x: 12, y: 10 },
-  { id: "seat-3", x: 14, y: 9 },
-  { id: "seat-4", x: 16, y: 10 },
-  { id: "seat-5", x: 18, y: 11 },
+  { id: "seat-1", x: 10, y: 11, facing: "down" },
+  { id: "seat-2", x: 12, y: 10, facing: "down" },
+  { id: "seat-3", x: 14, y: 9, facing: "down" },
+  { id: "seat-4", x: 16, y: 10, facing: "down" },
+  { id: "seat-5", x: 18, y: 11, facing: "down" },
 ];
 
 /** Solid part of the couch: the arc of back cushions plus two armrests. */

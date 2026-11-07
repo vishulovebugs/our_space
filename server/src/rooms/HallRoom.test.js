@@ -4,6 +4,10 @@ import { Server } from "@colyseus/core";
 import { defineRoom, defineServer } from "colyseus";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { HALL_LAYOUT, SEATS } from "@pixel-hall/shared/hallLayout.js";
+import { isStandablePosition } from "@pixel-hall/shared/movement.js";
+import { seatAnchor } from "@pixel-hall/shared/seats.js";
+
 import { HallRoom } from "./HallRoom.js";
 
 // Spawn tile (14, 17) with the feet on the tile's bottom edge.
@@ -162,4 +166,128 @@ describe("HallRoom", () => {
       colyseus.connectTo(serverRoom, { token: "test:user-31:pixel_31", character: CHARACTER }),
     ).rejects.toThrow();
   }, 30000);
+});
+
+describe("couch seats", () => {
+  const SEAT_INDEX = 2;
+  const ANCHOR = seatAnchor(SEATS[SEAT_INDEX]);
+
+  function placePlayer(serverRoom, sessionId, x, y) {
+    const player = serverRoom.state.players.get(sessionId);
+    player.x = x;
+    player.y = y;
+    return player;
+  }
+
+  async function joinNearSeat(overrides) {
+    const client = await join(overrides);
+    const serverRoom = colyseus.getRoomById(client.roomId);
+    placePlayer(serverRoom, client.sessionId, ANCHOR.x, ANCHOR.y);
+
+    return { client, serverRoom };
+  }
+
+  it("seats a player on a free seat at that seat's anchor", async () => {
+    const { client, serverRoom } = await joinNearSeat({ token: "test:user-alice:pixel_cat" });
+
+    client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(() => serverRoom.state.players.get(client.sessionId)?.seat === SEAT_INDEX);
+
+    const player = serverRoom.state.players.get(client.sessionId);
+    expect(player.x).toBeCloseTo(ANCHOR.x, 1);
+    expect(player.y).toBeCloseTo(ANCHOR.y, 1);
+    expect(player.dir).toBe(SEATS[SEAT_INDEX].facing);
+  });
+
+  it("refuses a seat that someone else already has", async () => {
+    const alice = await joinNearSeat({ token: "test:user-alice:pixel_cat" });
+    const bob = await joinNearSeat({ token: "test:user-bob:pixel_dog" });
+
+    alice.client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(
+      () => alice.serverRoom.state.players.get(alice.client.sessionId)?.seat === SEAT_INDEX,
+    );
+
+    const error = bob.client.waitForMessage("error");
+    bob.client.send("sit", { seatIndex: SEAT_INDEX });
+
+    expect((await error).message).toBeTruthy();
+    expect(bob.serverRoom.state.players.get(bob.client.sessionId).seat).toBe(-1);
+  });
+
+  it("refuses sitting from too far away", async () => {
+    const client = await join({ token: "test:user-alice:pixel_cat" });
+    const serverRoom = colyseus.getRoomById(client.roomId);
+
+    const error = client.waitForMessage("error");
+    client.send("sit", { seatIndex: SEAT_INDEX });
+    await error;
+
+    const player = serverRoom.state.players.get(client.sessionId);
+    expect(player.seat).toBe(-1);
+    expect(player.y).toBeCloseTo(SPAWN.y, 1);
+  });
+
+  it("ignores move messages from a seated player", async () => {
+    const { client, serverRoom } = await joinNearSeat({ token: "test:user-alice:pixel_cat" });
+
+    client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(() => serverRoom.state.players.get(client.sessionId)?.seat === SEAT_INDEX);
+
+    client.send("move", { x: ANCHOR.x + 40, y: ANCHOR.y, dir: "right" });
+    await wait(300);
+
+    const player = serverRoom.state.players.get(client.sessionId);
+    expect(player.seat).toBe(SEAT_INDEX);
+    expect(player.x).toBeCloseTo(ANCHOR.x, 1);
+    expect(player.y).toBeCloseTo(ANCHOR.y, 1);
+  });
+
+  it("frees the seat on stand and on disconnect", async () => {
+    const alice = await joinNearSeat({ token: "test:user-alice:pixel_cat" });
+
+    alice.client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(
+      () => alice.serverRoom.state.players.get(alice.client.sessionId)?.seat === SEAT_INDEX,
+    );
+
+    alice.client.send("stand");
+    await waitUntil(() => alice.serverRoom.state.players.get(alice.client.sessionId)?.seat === -1);
+
+    const stood = alice.serverRoom.state.players.get(alice.client.sessionId);
+    expect(isStandablePosition(HALL_LAYOUT, stood.x, stood.y)).toBe(true);
+
+    // The seat is free again: bob takes it, then drops while still seated.
+    const bob = await joinNearSeat({ token: "test:user-bob:pixel_dog" });
+    bob.client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(() => bob.serverRoom.state.players.get(bob.client.sessionId)?.seat === SEAT_INDEX);
+
+    await bob.client.leave();
+    await wait(300);
+
+    const carol = await joinNearSeat({ token: "test:user-carol:pixel_owl" });
+    carol.client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(
+      () => carol.serverRoom.state.players.get(carol.client.sessionId)?.seat === SEAT_INDEX,
+    );
+
+    expect(carol.serverRoom.state.players.get(carol.client.sessionId).seat).toBe(SEAT_INDEX);
+  });
+
+  it("rejects invalid seat indexes without breaking the room", async () => {
+    const { client, serverRoom } = await joinNearSeat({ token: "test:user-alice:pixel_cat" });
+
+    for (const seatIndex of [-1, 5, "a", null]) {
+      const error = client.waitForMessage("error");
+      client.send("sit", { seatIndex });
+      await error;
+    }
+
+    expect(serverRoom.state.players.get(client.sessionId).seat).toBe(-1);
+
+    client.send("sit", { seatIndex: SEAT_INDEX });
+    await waitUntil(() => serverRoom.state.players.get(client.sessionId)?.seat === SEAT_INDEX);
+
+    expect(serverRoom.state.players.get(client.sessionId).seat).toBe(SEAT_INDEX);
+  });
 });

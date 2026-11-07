@@ -49,6 +49,24 @@ export function composeCharacterSpritesheet(character) {
   return canvas;
 }
 
+/**
+ * The static seated pose, front facing. Sitting has no walk cycle, so this is
+ * one frame; the body is shifted down so the feet still land on the origin.
+ *
+ * @param {object} character
+ * @returns {HTMLCanvasElement}
+ */
+export function composeSeatedSprite(character) {
+  const canvas = document.createElement("canvas");
+  canvas.width = SPRITE_WIDTH;
+  canvas.height = SPRITE_HEIGHT;
+
+  const context = canvas.getContext("2d");
+  context.putImageData(toImageData(context, buildCharacterPixels(character, { sitting: true })), 0, 5);
+
+  return canvas;
+}
+
 function toImageData(context, pixels) {
   const image = context.createImageData(SPRITE_WIDTH, SPRITE_HEIGHT);
   image.data.set(pixels);

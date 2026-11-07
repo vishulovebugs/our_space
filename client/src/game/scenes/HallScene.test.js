@@ -17,4 +17,11 @@ describe("HallScene", () => {
       expect(source).toContain(event);
     }
   });
+
+  it("emits the seating events React can subscribe to", () => {
+    const source = HallScene.prototype.applyOwnSeat.toString();
+
+    expect(source).toContain("player:seated");
+    expect(source).toContain("player:stood");
+  });
 });

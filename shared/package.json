@@ -8,6 +8,7 @@
     "./character.js": "./character.js",
     "./hallLayout.js": "./hallLayout.js",
     "./movement.js": "./movement.js",
+    "./seats.js": "./seats.js",
     "./validators.js": "./validators.js"
   },
   "scripts": {

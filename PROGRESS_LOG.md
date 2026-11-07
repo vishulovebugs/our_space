@@ -9,7 +9,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 3 | Pixel character designer | done | this commit (feat: character creator with procedural pixel sprites) | 47/0 | 2026-11-08 |
 | 4 | The hall: movement, curved couch, 5 seats | done | this commit (feat: pixel hall scene with walking player) | 71/0 | 2026-11-08 |
 | 5 | Multiplayer hall with Colyseus | done | this commit (feat: multiplayer hall with server-validated movement) | 78/0 | 2026-11-08 |
-| 6 | Arcade shell + Chess cabinet (chess.js) | not started | - | - | - |
+| 6 | Couch seats with server-side validation | done | this commit (feat: couch seats with server-side validation) | 92/0 | 2026-11-08 |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
 | 8 | Colossal Cave Adventure cabinet (original text adventure) | not started | - | - | - |
 | 9 | North-wall TV: synced YouTube IFrame playback | not started | - | - | - |
@@ -220,6 +220,38 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - The reconnect loop keeps the old token, so a session that expired during the drop will keep failing until the page is reloaded.
   - Remote players are never rendered in a test: Phaser is still only import-tested, so the manual check above is the only verification of the visuals.
 - Next prompt: 6
+
+### Prompt 6 - Couch seats  (2026-11-08 01:04)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: couch seats with server-side validation"
+- What was built:
+  - shared/hallLayout.js - every seat now carries a facing direction (all "down": the couch back is north, the room is south)
+  - shared/seats.js - seatAnchor (pixel position on the cushion), seatStandTile (the floor in front), isSeatIndex (0-4), seatedPlayers(state) derived helper
+  - server/src/rooms/HallRoom.js - "sit" {seatIndex} and "stand" messages; sit requires an index in range, a free seat, a player within 24px of the anchor and not already seated; standing snaps the player to the walkable tile in front of the cushion; moves from a seated player are ignored; bad requests get an "error" message with a reason
+  - client/src/sprites/art.js - a sitting variant of buildCharacterPixels (knees in front of the torso instead of legs hanging down); client/src/sprites/index.js - composeSeatedSprite, shifted down so the feet still line up with a seat anchor
+  - client/src/game/scenes/HallScene.js - "Press E to sit" over a free seat within 24px, E sits or stands, Esc stands, seated characters use the static seated pose, stop walking and stop sending moves; remote seated players swap to the seated pose too; applyOwnSeat emits player:seated / player:stood on the bridge
+  - tests - shared/seats.test.js plus a "couch seats" describe in server/src/rooms/HallRoom.test.js and a bridge-event guard in HallScene.test.js
+- Tests: 92 passed, 0 failed - client 20, server 21, shared 51. `npm run build --workspace client` exits 0.
+- Decisions made:
+  - Seat occupancy is derived from the players map (seatedPlayers) instead of a separate seat table, so a player who leaves cannot leave a seat reserved. Disconnecting therefore frees the seat with no extra code.
+  - The 24px sit range and the anchor geometry live in shared/seats.js, so the prompt the client shows and the check the server enforces cannot disagree.
+  - Sitting uses one static frame rather than a seated walk cycle: a seated player cannot move, so animation frames for it would be dead weight. The pose reuses the same layer code with the legs bent forward.
+  - The server draws the standing position from the walkable tile in front of the cushion via clampToWalkable, so an oddly placed seat can never drop a player inside the couch.
+  - Invalid seat requests answer with a single "error" message carrying a human-readable reason; the client ignores it for now, since the prompt already hides seats that are taken.
+  - E still falls back to the old TV/arcade/seat interactions when no free seat is in range, so nothing from Prompt 4 was lost.
+- Deviations: none
+- Problems hit and fixes: none - the deprecation warning about defineTypes() in @colyseus/schema comes from Prompt 5 and is left alone (it still works and switching is not part of this prompt).
+- Manual checks for the human:
+  1. `npm run dev`, sign in, walk up to a cushion: "Press E to sit" appears over that seat and disappears when you step away.
+  2. Press E: the character sits on the cushion at the seat, facing the room, and WASD no longer moves it.
+  3. Press E or Esc: the character stands on the floor in front of that seat.
+  4. Second window: sit on one seat, then have the other account try the same seat - it gets no prompt, and pressing E does nothing harmful. Sit on different seats and each window shows the other character seated.
+  5. Sit down, then close that window: the seat becomes available to the other account again.
+- Known issues / TODO for later:
+  - A rejected sit is only reported on the socket as an "error" message; nothing in React or the canvas surfaces the reason yet.
+  - The seat prompt is canvas text at 6px and follows the cushion anchor, not the player, so at the top of the arc it can overlap the couch back.
+  - Seated visuals are still unverified in a browser: Phaser remains import-tested only.
+- Next prompt: 7
 
 ## Decisions and changes
 - 2026-11-08 - User instruction: commit after every phase (in addition to the one-commit-per-prompt rule in section 5). Applied from Prompt 0 onward.

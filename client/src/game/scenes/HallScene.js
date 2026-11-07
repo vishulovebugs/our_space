@@ -20,6 +20,7 @@ import {
   pixelToTile,
   tileDistance,
 } from "@pixel-hall/shared/movement.js";
+import { seatAnchor } from "@pixel-hall/shared/seats.js";
 
 import {
   SPRITE_DIRECTIONS,
@@ -27,6 +28,7 @@ import {
   SPRITE_WIDTH,
   WALK_FRAMES,
   composeCharacterSpritesheet,
+  composeSeatedSprite,
 } from "../../sprites/index.js";
 import { gameBridge } from "../bridge.js";
 import { createHallTextures } from "../textures.js";
@@ -35,10 +37,13 @@ const INTERACT_RANGE = 2;
 const SPAWN_TILE = { x: 14, y: 17 };
 const SEND_INTERVAL_MS = 50;
 const SNAP_THRESHOLD_PX = 24;
+/** Same 24 pixels the room uses to accept a sit. */
+const SIT_RANGE_PX = 24;
 const RECONNECT_DELAY_MS = 2000;
 const RECONNECT_ATTEMPTS = 5;
 const DEFAULT_SERVER_URL = "ws://localhost:2567";
 const LOCAL_TEXTURE_KEY = "player-local";
+const LOCAL_SEATED_KEY = "player-local-seated";
 
 export class HallScene extends Phaser.Scene {
   constructor() {
@@ -58,11 +63,23 @@ export class HallScene extends Phaser.Scene {
     this.lastSentAt = 0;
     this.lastSent = { x: 0, y: 0 };
     this.facing = "down";
+    this.seatIndex = -1;
 
     createHallTextures(this);
     this.drawRoom();
     this.createLocalPlayer();
     this.createInput();
+
+    this.seatPrompt = this.add
+      .text(0, 0, "Press E to sit", {
+        fontFamily: "monospace",
+        fontSize: "6px",
+        color: "#e8e8f0",
+        backgroundColor: "#141420",
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(20000)
+      .setVisible(false);
 
     this.cameras.main.setBounds(0, 0, HALL_WIDTH, HALL_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.15, 0.15);
@@ -71,6 +88,22 @@ export class HallScene extends Phaser.Scene {
   }
 
   update(_time, delta) {
+    this.updateRemotePlayers();
+    this.updateSeatPrompt();
+
+    // Seated players are pinned to the cushion until they stand up.
+    if (this.seatIndex >= 0) {
+      this.player.anims.stop();
+      this.player.setDepth(this.player.y);
+      this.nameLabel.setPosition(this.player.x, this.player.y - SPRITE_HEIGHT - 2);
+
+      if (this.interactPressed() || Phaser.Input.Keyboard.JustDown(this.keys.stand)) {
+        this.standUp();
+      }
+
+      return;
+    }
+
     const step = (PLAYER_SPEED * delta) / 1000;
 
     const left = this.keys.left.isDown || this.cursors.left.isDown;
@@ -97,14 +130,10 @@ export class HallScene extends Phaser.Scene {
     this.updatePose(vx, vy);
     this.player.setDepth(this.player.y);
     this.nameLabel.setPosition(this.player.x, this.player.y - SPRITE_HEIGHT - 2);
-    this.updateRemotePlayers();
     this.sendMove();
 
-    if (
-      Phaser.Input.Keyboard.JustDown(this.keys.interact) ||
-      Phaser.Input.Keyboard.JustDown(this.keys.interactAlt)
-    ) {
-      this.emitNearestInteraction();
+    if (this.interactPressed()) {
+      this.handleInteract();
     }
   }
 
@@ -181,16 +210,43 @@ export class HallScene extends Phaser.Scene {
     }
   }
 
-  /** The server has the last word: a big mismatch means we were snapped back. */
+  /** The server has the last word, on both where we are and whether we sit. */
   reconcileOwnPosition(remote) {
-    if (Math.hypot(remote.x - this.player.x, remote.y - this.player.y) > SNAP_THRESHOLD_PX) {
+    const seat = remote.seat ?? -1;
+
+    if (seat !== this.seatIndex) {
+      this.applyOwnSeat(seat);
+      this.player.setPosition(remote.x, remote.y);
+      return;
+    }
+
+    const drifted = Math.hypot(remote.x - this.player.x, remote.y - this.player.y);
+
+    if (seat >= 0 || drifted > SNAP_THRESHOLD_PX) {
       this.player.x = remote.x;
       this.player.y = remote.y;
     }
   }
 
+  /** Seated and standing looks, plus the bridge events React can listen for. */
+  applyOwnSeat(seatIndex) {
+    const previous = this.seatIndex;
+    this.seatIndex = seatIndex;
+
+    if (seatIndex >= 0) {
+      this.player.anims.stop();
+      this.player.setTexture(LOCAL_SEATED_KEY, 0);
+      this.facing = SEATS[seatIndex].facing ?? "down";
+      gameBridge.emit("player:seated", { seatId: SEATS[seatIndex].id });
+      return;
+    }
+
+    this.player.setTexture(LOCAL_TEXTURE_KEY, 0);
+    gameBridge.emit("player:stood", { seatId: SEATS[previous]?.id });
+  }
+
   sendMove() {
-    if (!this.room || this.reconnecting) return;
+    if (!this.room || this.reconnecting || this.seatIndex >= 0) return;
 
     const now = this.time.now;
     const movedEnough =
@@ -206,6 +262,7 @@ export class HallScene extends Phaser.Scene {
 
   createLocalPlayer() {
     this.registerCharacter(LOCAL_TEXTURE_KEY, this.character);
+    this.registerSeated(LOCAL_SEATED_KEY, this.character);
 
     this.player = this.add
       .sprite(
@@ -230,8 +287,12 @@ export class HallScene extends Phaser.Scene {
     let view = this.remote.get(sessionId);
 
     if (!view) {
+      const character = parseCharacter(remote.character);
       const textureKey = `player-${sessionId}`;
-      this.registerCharacter(textureKey, parseCharacter(remote.character));
+      const seatedKey = `seated-${sessionId}`;
+
+      this.registerCharacter(textureKey, character);
+      this.registerSeated(seatedKey, character);
 
       const sprite = this.add.sprite(remote.x, remote.y, textureKey, 0).setOrigin(0.5, 1);
       const label = this.add
@@ -243,13 +304,29 @@ export class HallScene extends Phaser.Scene {
         .setOrigin(0.5, 1)
         .setDepth(10000);
 
-      view = { sprite, label, textureKey, targetX: remote.x, targetY: remote.y, dir: remote.dir ?? "down" };
+      view = {
+        sprite,
+        label,
+        textureKey,
+        seatedKey,
+        seat: -1,
+        targetX: remote.x,
+        targetY: remote.y,
+        dir: remote.dir ?? "down",
+      };
       this.remote.set(sessionId, view);
     }
 
     view.targetX = remote.x;
     view.targetY = remote.y;
     view.dir = remote.dir ?? view.dir;
+
+    const seat = remote.seat ?? -1;
+    if (seat !== view.seat) {
+      view.seat = seat;
+      view.sprite.anims.stop();
+      view.sprite.setTexture(seat >= 0 ? view.seatedKey : view.textureKey, 0);
+    }
   }
 
   removeRemotePlayer(sessionId) {
@@ -259,6 +336,7 @@ export class HallScene extends Phaser.Scene {
     view.sprite.destroy();
     view.label.destroy();
     this.textures.remove(view.textureKey);
+    this.textures.remove(view.seatedKey);
     this.remote.delete(sessionId);
   }
 
@@ -275,6 +353,11 @@ export class HallScene extends Phaser.Scene {
       view.sprite.y += (view.targetY - view.sprite.y) * 0.25;
       view.sprite.setDepth(view.sprite.y);
       view.label.setPosition(view.sprite.x, view.sprite.y - SPRITE_HEIGHT - 2);
+
+      if (view.seat >= 0) {
+        view.sprite.anims.stop();
+        continue;
+      }
 
       const moving =
         Math.abs(view.targetX - view.sprite.x) > 1 || Math.abs(view.targetY - view.sprite.y) > 1;
@@ -324,6 +407,76 @@ export class HallScene extends Phaser.Scene {
     }
 
     sprite.anims.play(key, true);
+  }
+
+  registerSeated(textureKey, character) {
+    if (this.textures.exists(textureKey)) return;
+
+    this.textures.addCanvas(textureKey, composeSeatedSprite(character));
+  }
+
+  // ---- sitting ----------------------------------------------------------
+
+  interactPressed() {
+    return (
+      Phaser.Input.Keyboard.JustDown(this.keys.interact) ||
+      Phaser.Input.Keyboard.JustDown(this.keys.interactAlt)
+    );
+  }
+
+  /** E sits on a free seat when one is in range, otherwise it interacts. */
+  handleInteract() {
+    const seat = this.nearestFreeSeat();
+
+    if (seat) {
+      this.room?.send("sit", { seatIndex: seat.index });
+      return;
+    }
+
+    this.emitNearestInteraction();
+  }
+
+  standUp() {
+    this.room?.send("stand");
+  }
+
+  nearestFreeSeat() {
+    if (!this.room) return null;
+
+    let nearest = null;
+
+    SEATS.forEach((seat, index) => {
+      if (this.seatIsTaken(index)) return;
+
+      const anchor = seatAnchor(seat);
+      const distance = Math.hypot(anchor.x - this.player.x, anchor.y - this.player.y);
+      if (distance > SIT_RANGE_PX || (nearest && nearest.distance <= distance)) return;
+
+      nearest = { index, seat, anchor, distance };
+    });
+
+    return nearest;
+  }
+
+  seatIsTaken(index) {
+    for (const view of this.remote.values()) {
+      if (view.seat === index) return true;
+    }
+
+    return false;
+  }
+
+  updateSeatPrompt() {
+    const seat = this.seatIndex >= 0 ? null : this.nearestFreeSeat();
+
+    if (!seat) {
+      this.seatPrompt.setVisible(false);
+      return;
+    }
+
+    this.seatPrompt
+      .setPosition(seat.anchor.x, seat.anchor.y - SPRITE_HEIGHT - 6)
+      .setVisible(true);
   }
 
   // ---- room -------------------------------------------------------------
@@ -387,6 +540,7 @@ export class HallScene extends Phaser.Scene {
       right: "D",
       interact: "E",
       interactAlt: "SPACE",
+      stand: "ESC",
     });
   }
 
