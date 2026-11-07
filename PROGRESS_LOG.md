@@ -7,7 +7,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 1 | Monorepo scaffold (npm workspaces, Vitest) | done | this commit (feat: monorepo scaffold with client, server, shared) | 5/0 | 2026-11-08 |
 | 2 | Auth: sign up / sign in with unique usernames | done | this commit (feat: auth with unique usernames) | 25/0 | 2026-11-08 |
 | 3 | Pixel character designer | done | this commit (feat: character creator with procedural pixel sprites) | 47/0 | 2026-11-08 |
-| 4 | The hall: movement, curved couch, 5 seats | not started | - | - | - |
+| 4 | The hall: movement, curved couch, 5 seats | done | this commit (feat: pixel hall scene with walking player) | 71/0 | 2026-11-08 |
 | 5 | Dark chat space (/t, /q) | not started | - | - | - |
 | 6 | Arcade shell + Chess cabinet (chess.js) | not started | - | - | - |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
@@ -145,6 +145,43 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - The walk spritesheet is generated but nothing animates it yet (Prompt 4 consumes it).
   - The "hall" screen is still the Prompt 2 Welcome placeholder.
 - Next prompt: 4
+
+### Prompt 4 - Hall scene with walking player  (2026-11-08 00:44)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: pixel hall scene with walking player"
+- What was built:
+  - shared/hallLayout.js - 30x20 tile room, perimeter walls, couch back arc plus armrests, five seat tiles, TV (6x2 on the north wall), three cabinets (CHESS, TANKERS, CAVE on the east wall), door in the south wall, rectTiles helper, HALL_LAYOUT with wallKeys and the blocked set
+  - shared/movement.js - tileKey, isWalkable, clampToWalkable (ring search), tileDistance, isNearby, pixelToTile, tileCentre
+  - client/src/game/bridge.js - createEventBridge (on/off/emit, on returns its unsubscribe) plus the shared gameBridge instance
+  - client/src/game/textures.js - procedural floor, wall, couch back, couch seat, TV, door and three arcade textures
+  - client/src/game/scenes/HallScene.js - draws the room and props, builds the player sheet from composeCharacterSpritesheet, four-direction walk animations, axis-by-axis collision through shared isWalkable, camera follow, username label, and E/SPACE emitting interact:seat / interact:tv / interact:arcade for the nearest prop within two tiles
+  - client/src/components/GameCanvas.jsx - Phaser game (pixelArt, roundPixels, FIT, 320x240), spawn data handed over in preBoot, destroyed on unmount
+  - client/src/pages/Hall.jsx - canvas plus Links out button; App now routes here, and the old Welcome placeholder is gone
+  - client/vite.config.js - Phaser aliased to its ESM build
+  - tests: shared/hallLayout.test.js, shared/movement.test.js, client/src/game/bridge.test.js, client/src/game/scenes/HallScene.test.js
+- Tests: 71 passed, 0 failed - client 19, server 8, shared 44. `npm run build --workspace client` exits 0 (Vite warns the Phaser chunk exceeds 500 kB).
+- Decisions made:
+  - The couch's five cushions are walkable floor tiles in front of a solid back arc, so seats never overlap couch tiles (keeping the "no two objects overlap" rule true) and a player can stand at a seat until sitting arrives in Prompt 5.
+  - Collision is implemented in shared/movement.js instead of Arcade Physics bodies, so the server can enforce the same rules later from one implementation.
+  - Depth is sorted by y, so the player walks behind props; "right" sprites are the mirrored "left" frames.
+  - `import * as Phaser` rather than a default import, because Phaser's ESM build only has named exports.
+  - Phaser is aliased to dist/phaser.esm.js in the client Vite config, since the package "main" points at the source tree that needs the dev-only phaser3spectorjs package.
+  - Hall.jsx keeps a Log out button until the door handles logging out (Prompt 10).
+  - Deleted Welcome.jsx: this prompt replaced the placeholder it existed for.
+- Deviations: none
+- Problems hit and fixes:
+  - Client test files failed with "Cannot find module 'phaser3spectorjs'". Root cause: Vitest resolved Phaser's "main" (src/phaser.js), which requires that dev-only package. Fix: resolve.alias maps phaser to dist/phaser.esm.js in client/vite.config.js.
+  - After that: "TypeError: Cannot read properties of undefined (reading 'Scene')". Root cause: the ESM build has named exports only, so `import Phaser from "phaser"` was undefined. Fix: `import * as Phaser from "phaser"` in the scene, GameCanvas and the test.
+- Manual checks for the human:
+  1. `npm run dev`, sign in with a profile that already has a character - the hall renders with floor, walls, purple couch, TV, three cabinets and the door.
+  2. WASD or the arrow keys: the player walks with a four-direction animation and the camera follows.
+  3. Try to walk into a wall, the couch, the TV, a cabinet and the door - all blocked.
+  4. Walk next to a cabinet and press E or Space: nothing visible happens yet (React subscribes to the bridge in a later prompt), but the event fires.
+- Known issues / TODO for later:
+  - The Phaser scene is only import-tested, never booted in CI, so rendering and movement are unverified by tests.
+  - Interactions are emitted but have no React subscriber yet.
+  - The bundle is ~1.4 MB because Phaser sits in the main chunk; there is no touch/click-to-move.
+- Next prompt: 5
 
 ## Decisions and changes
 - 2026-11-08 - User instruction: commit after every phase (in addition to the one-commit-per-prompt rule in section 5). Applied from Prompt 0 onward.

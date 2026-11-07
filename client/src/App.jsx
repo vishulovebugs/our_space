@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { nextScreen } from "@pixel-hall/shared/character.js";
 
 import CharacterCreator from "./pages/CharacterCreator.jsx";
+import Hall from "./pages/Hall.jsx";
 import Login from "./pages/Login.jsx";
-import Welcome from "./pages/Welcome.jsx";
 import { supabase } from "./lib/supabase.js";
 
 async function loadProfile(userId) {
@@ -60,8 +60,9 @@ export default function App() {
   }
 
   return (
-    <Welcome
-      username={profile?.username ?? session.user.user_metadata?.username ?? session.user.email}
+    <Hall
+      character={profile.character}
+      username={profile.username ?? session.user.user_metadata?.username ?? session.user.email}
       onLogout={handleLogout}
     />
   );

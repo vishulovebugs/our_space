@@ -6,6 +6,8 @@
   "exports": {
     ".": "./constants.js",
     "./character.js": "./character.js",
+    "./hallLayout.js": "./hallLayout.js",
+    "./movement.js": "./movement.js",
     "./validators.js": "./validators.js"
   },
   "scripts": {
