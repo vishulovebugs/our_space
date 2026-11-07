@@ -9,9 +9,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@colyseus/schema": "^5.0.45",
     "@colyseus/ws-transport": "^0.18.4",
     "@pixel-hall/shared": "*",
+    "@supabase/supabase-js": "^2.119.0",
     "colyseus": "^0.18.12",
     "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@colyseus/testing": "^0.18.6"
   }
 }

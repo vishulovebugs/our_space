@@ -63,6 +63,7 @@ export default function App() {
     <Hall
       character={profile.character}
       username={profile.username ?? session.user.user_metadata?.username ?? session.user.email}
+      token={session.access_token}
       onLogout={handleLogout}
     />
   );

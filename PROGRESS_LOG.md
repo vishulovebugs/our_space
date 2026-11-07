@@ -8,7 +8,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 2 | Auth: sign up / sign in with unique usernames | done | this commit (feat: auth with unique usernames) | 25/0 | 2026-11-08 |
 | 3 | Pixel character designer | done | this commit (feat: character creator with procedural pixel sprites) | 47/0 | 2026-11-08 |
 | 4 | The hall: movement, curved couch, 5 seats | done | this commit (feat: pixel hall scene with walking player) | 71/0 | 2026-11-08 |
-| 5 | Dark chat space (/t, /q) | not started | - | - | - |
+| 5 | Multiplayer hall with Colyseus | done | this commit (feat: multiplayer hall with server-validated movement) | 78/0 | 2026-11-08 |
 | 6 | Arcade shell + Chess cabinet (chess.js) | not started | - | - | - |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
 | 8 | Colossal Cave Adventure cabinet (original text adventure) | not started | - | - | - |
@@ -182,6 +182,44 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - Interactions are emitted but have no React subscriber yet.
   - The bundle is ~1.4 MB because Phaser sits in the main chunk; there is no touch/click-to-move.
 - Next prompt: 5
+
+### Prompt 5 - Multiplayer hall with Colyseus  (2026-11-08 00:54)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: multiplayer hall with server-validated movement"
+- What was built:
+  - server/src/state/HallState.js - Player schema (id, username, x, y, dir, character string, seat int8 defaulting to -1) and HallState with players: MapSchema, declared with defineTypes (no decorators)
+  - server/src/supabase.js - loadProfile(token, userId): anon key plus the player's own bearer token, so RLS still applies; no service-role key
+  - server/src/rooms/HallRoom.js - onAuth through server/auth.js (test mode takes the test token and options.character), maxClients = MAX_PLAYERS_PER_HALL, one session per userId (the older connection gets leave(4000)), move handling that rejects non-finite, unwalkable and too-far positions (PLAYER_SPEED * elapsed + 8px) and answers with a "snap" message, player removed on leave
+  - shared/constants.js - PLAYER_SPEED = 90; shared/movement.js - isStandablePosition(layout, x, y), the single standability rule both sides use
+  - client/src/game/scenes/HallScene.js - joins the room after the scene loads, local prediction plus reconciliation against the server, remote players built from their character JSON with username labels, lerped motion, move messages throttled to 50ms, leave detected and a bounded reconnect loop emitting connection:lost/connection:restored
+  - client/src/pages/Hall.jsx - "Reconnecting..." overlay; token plumbed App -> Hall -> GameCanvas -> scene registry; styles.css gains the overlay
+  - server/src/rooms/HallRoom.test.js - the seven required cases with @colyseus/testing
+  - server/.env.example - SUPABASE_URL and SUPABASE_ANON_KEY documented
+- Tests: 78 passed, 0 failed - client 19, server 15 (server.test 1, auth.test 7, HallRoom.test 7), shared 44. `npm run build --workspace client` exits 0 (same Phaser chunk warning).
+- Decisions made:
+  - The client SDK for a 0.18 server is @colyseus/sdk 0.18.9; the older colyseus.js package was installed first and removed. @colyseus/schema is a direct server dependency because defineTypes is only exported from it in 5.0.45.
+  - The character travels as a JSON string in the schema: MapSchema and scalar fields are all the state needs, and a nested object type would buy nothing.
+  - Movement validation is speed-budget based (elapsed time since the last accepted move, +8px slack) rather than per-frame checks, so a dropped or batched message does not falsely reject a legal walk.
+  - Safety is server-authoritative but the client still predicts locally, then reconciles whenever the server position differs by more than 24px; small differences are left to the interpolation to hide.
+  - The test suite boots its own defineServer instance through @colyseus/testing's boot(), which listens on port 2568, so the dev server on 2567 is never touched.
+  - Tests poll the client state with a bounded waitUntil helper instead of waiting for patches: the second player often arrives inside the initial state, and waiting for a patch that never comes just hangs.
+  - Reconnect attempts are capped at five with a 2s delay; when they run out the overlay stays up rather than pretending the player is still online.
+- Deviations: none
+- Problems hit and fixes:
+  - Vitest could not resolve "../auth.js" from src/rooms: auth.js lives at the server root. Fix: ../../auth.js.
+  - The first test waited for a patch after both clients joined and timed out. Fix: poll for the expected state instead (waitUntil).
+  - server/.env.example failed to patch through the editor path again (same as Prompts 2 and 4); rewritten from the shell.
+- Manual checks for the human:
+  1. `npm run dev`, window A: sign in as account one and open the hall.
+  2. Window B (a second browser profile or a private window): sign in as account two, open the hall.
+  3. Each window shows both characters with usernames; walking in one window moves that character in the other, smoothly, with the right facing.
+  4. Sign in again as account one in a third window: the first window's connection is closed and only the newest one keeps the character.
+  5. Stop the server, wait a moment: "Reconnecting..." appears; start it again and press nothing - the overlay clears once a rejoin succeeds.
+- Known issues / TODO for later:
+  - Seats are in the schema (seat = -1) but sitting is not implemented yet; the move handler never sets it.
+  - The reconnect loop keeps the old token, so a session that expired during the drop will keep failing until the page is reloaded.
+  - Remote players are never rendered in a test: Phaser is still only import-tested, so the manual check above is the only verification of the visuals.
+- Next prompt: 6
 
 ## Decisions and changes
 - 2026-11-08 - User instruction: commit after every phase (in addition to the one-commit-per-prompt rule in section 5). Applied from Prompt 0 onward.

@@ -3,15 +3,15 @@
 Short to-do for the current phase. The authoritative, append-only record is
 `PROGRESS_LOG.md`; the rules are in `CLAUDE.md`.
 
-## Prompt 4 - Hall scene with walking player
+## Prompt 5 - Multiplayer hall
 
-- [x] shared/hallLayout.js: 30x20 room, walls, couch arc, 5 seats, TV, 3 cabinets, door
-- [x] shared/movement.js: isWalkable, clampToWalkable, distance helpers
-- [x] client/src/game: bridge, procedural textures, HallScene (player, camera, anims)
-- [x] GameCanvas component + Hall page, route after the creator
-- [x] Tests: walkability, clamping, layout reachability/overlaps, bridge, scene import
+- [x] server/src/state/HallState.js: Player + HallState with defineTypes
+- [x] server/src/rooms/HallRoom.js: onAuth, single session per user, validated moves, snap
+- [x] shared: PLAYER_SPEED + isStandablePosition so client and server agree
+- [x] client: join hall, remote players, interpolation, reconnect overlay
+- [x] Tests: @colyseus/testing suite (join, move, wall, teleport, dup user, leave, 31st)
 - [x] Run the whole suite, update PROGRESS_LOG.md, commit
 
 ## Next
 
-- [ ] Prompt 5 - see the status board in PROGRESS_LOG.md (not started)
+- [ ] Prompt 6 - see the status board in PROGRESS_LOG.md (not started)

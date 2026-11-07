@@ -65,3 +65,11 @@ export function tileCentre(tile) {
     y: tile.y * TILE_SIZE + TILE_SIZE / 2,
   };
 }
+
+/**
+ * Whether a sprite whose feet are at (x, y) in pixels is standing on floor.
+ * Shared so client prediction and server validation cannot drift apart.
+ */
+export function isStandablePosition(layout, x, y) {
+  return isWalkable(layout, pixelToTile(x), pixelToTile(y - 1));
+}

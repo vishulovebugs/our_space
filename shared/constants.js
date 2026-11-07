@@ -9,3 +9,6 @@ export const GAME_NAME = "Pixel Hall";
 export const TILE_SIZE = 16;
 
 export const MAX_PLAYERS_PER_HALL = 30;
+
+/** Walking speed in pixels per second. The server validates moves against it. */
+export const PLAYER_SPEED = 90;

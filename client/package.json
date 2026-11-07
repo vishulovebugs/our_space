@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@colyseus/sdk": "^0.18.9",
     "@pixel-hall/shared": "*",
     "@supabase/supabase-js": "^2.119.0",
     "phaser": "^3.90.0",

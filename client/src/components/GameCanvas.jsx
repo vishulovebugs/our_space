@@ -7,7 +7,7 @@ import { HallScene } from "../game/scenes/HallScene.js";
  * Mounts the Phaser game. In FIT mode Phaser scales the 320x240 canvas up to
  * the container and keeps the pixels crisp.
  */
-export default function GameCanvas({ character, username }) {
+export default function GameCanvas({ character, username, token }) {
   const containerRef = useRef(null);
   const gameRef = useRef(null);
 
@@ -27,7 +27,7 @@ export default function GameCanvas({ character, username }) {
       scene: [HallScene],
       callbacks: {
         // Runs after the registry exists and before the scene is created.
-        preBoot: (booted) => booted.registry.set("spawn", { character, username }),
+        preBoot: (booted) => booted.registry.set("spawn", { character, username, token }),
       },
     });
 
