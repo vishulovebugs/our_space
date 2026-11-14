@@ -5,6 +5,7 @@
   "main": "./constants.js",
   "exports": {
     ".": "./constants.js",
+    "./arcade.js": "./arcade.js",
     "./character.js": "./character.js",
     "./chatParser.js": "./chatParser.js",
     "./hallLayout.js": "./hallLayout.js",

@@ -516,3 +516,82 @@ describe("shared tv", () => {
     expect(tv.videoId).toBe(VIDEO);
   });
 });
+
+describe("arcade cabinets", () => {
+  // Next to the Chess cabinet at (28, 5): feet on tile (27, 5).
+  const NEAR_CHESS = { x: 27 * 16 + 8, y: 6 * 16 };
+
+  async function joinNearCabinet(token) {
+    const client = await join({ token });
+    const serverRoom = colyseus.getRoomById(client.roomId);
+
+    const player = serverRoom.state.players.get(client.sessionId);
+    player.x = NEAR_CHESS.x;
+    player.y = NEAR_CHESS.y;
+
+    return { client, serverRoom };
+  }
+
+  it("lets a standing player enter a cabinet they are next to", async () => {
+    const alice = await joinNearCabinet("test:user-alice:pixel_cat");
+
+    const reply = alice.client.waitForMessage("arcade:entered");
+    alice.client.send("arcade:enter", { id: "chess" });
+
+    expect(await reply).toEqual({ ok: true, id: "chess" });
+    expect(alice.serverRoom.state.players.get(alice.client.sessionId).activity).toBe("chess");
+  });
+
+  it("refuses a cabinet the player is nowhere near", async () => {
+    const alice = await joinNearCabinet("test:user-alice:pixel_cat");
+
+    const error = alice.client.waitForMessage("error");
+    alice.client.send("arcade:enter", { id: "tankers" });
+
+    expect((await error).message).toBeTruthy();
+    expect(alice.serverRoom.state.players.get(alice.client.sessionId).activity).toBe("");
+  });
+
+  it("refuses an unknown cabinet", async () => {
+    const alice = await joinNearCabinet("test:user-alice:pixel_cat");
+
+    const error = alice.client.waitForMessage("error");
+    alice.client.send("arcade:enter", { id: "pinball" });
+
+    expect((await error).message).toBe("That arcade does not exist.");
+    expect(alice.serverRoom.state.players.get(alice.client.sessionId).activity).toBe("");
+  });
+
+  it("refuses a seated player even next to the cabinet", async () => {
+    const alice = await joinNearCabinet("test:user-alice:pixel_cat");
+    const anchor = seatAnchor(SEATS[2]);
+
+    const player = alice.serverRoom.state.players.get(alice.client.sessionId);
+    player.x = anchor.x;
+    player.y = anchor.y;
+
+    alice.client.send("sit", { seatIndex: 2 });
+    await waitUntil(() => alice.serverRoom.state.players.get(alice.client.sessionId)?.seat === 2);
+
+    const error = alice.client.waitForMessage("error");
+    alice.client.send("arcade:enter", { id: "chess" });
+
+    expect((await error).message).toBeTruthy();
+    expect(alice.serverRoom.state.players.get(alice.client.sessionId).activity).toBe("");
+  });
+
+  it("clears the activity when the player leaves the hall", async () => {
+    const alice = await joinNearCabinet("test:user-alice:pixel_cat");
+    const bob = await join({ token: "test:user-bob:pixel_dog" });
+
+    const reply = alice.client.waitForMessage("arcade:entered");
+    alice.client.send("arcade:enter", { id: "chess" });
+    await reply;
+
+    await alice.client.leave();
+    await waitUntil(() => playersOf(bob.state).length === 1);
+
+    const activities = playersOf(bob.state).map(({ player }) => player.activity);
+    expect(activities).toEqual([""]);
+  });
+});

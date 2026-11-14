@@ -1,9 +1,16 @@
 import { Room } from "colyseus";
 
 import { MAX_PLAYERS_PER_HALL, PLAYER_SPEED, TILE_SIZE } from "@pixel-hall/shared";
+import { ARCADE_RANGE, arcadeById } from "@pixel-hall/shared/arcade.js";
 import { CHAT_MESSAGE_MAX } from "@pixel-hall/shared/chatParser.js";
 import { HALL_LAYOUT, SEATS } from "@pixel-hall/shared/hallLayout.js";
-import { clampToWalkable, isStandablePosition, tileCentre } from "@pixel-hall/shared/movement.js";
+import {
+  clampToWalkable,
+  isStandablePosition,
+  pixelToTile,
+  tileCentre,
+  tileDistance,
+} from "@pixel-hall/shared/movement.js";
 import { isSeatIndex, seatAnchor, seatStandTile, seatedPlayers } from "@pixel-hall/shared/seats.js";
 import { currentPosition } from "@pixel-hall/shared/tvSync.js";
 import { parseYouTubeUrl } from "@pixel-hall/shared/youtube.js";
@@ -54,6 +61,7 @@ export class HallRoom extends Room {
     this.onMessage("tv:pause", (client) => this.handleTvPause(client));
     this.onMessage("tv:resume", (client) => this.handleTvResume(client));
     this.onMessage("tv:stop", (client) => this.handleTvStop(client));
+    this.onMessage("arcade:enter", (client, payload) => this.handleArcadeEnter(client, payload));
   }
 
   async onAuth(_client, options) {
@@ -198,6 +206,32 @@ export class HallRoom extends Room {
 
     // Leaving the couch gives up the remote, and may end the show.
     this.refreshHost();
+  }
+
+  /**
+   * Arcades are floor furniture: a player must be standing, the cabinet must
+   * exist, and they must actually be next to it. No game logic lives here yet.
+   */
+  handleArcadeEnter(client, payload) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+
+    if (player.seat >= 0) {
+      return this.fail(client, "Stand up to play an arcade.");
+    }
+
+    const arcade = arcadeById(payload?.id);
+    if (!arcade) {
+      return this.fail(client, "That arcade does not exist.");
+    }
+
+    const standing = { x: pixelToTile(player.x), y: pixelToTile(player.y - 1) };
+    if (tileDistance(standing, arcade) > ARCADE_RANGE) {
+      return this.fail(client, "You are too far from that arcade.");
+    }
+
+    player.activity = arcade.id;
+    client.send("arcade:entered", { ok: true, id: arcade.id });
   }
 
   /**

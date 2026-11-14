@@ -11,6 +11,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 5 | Multiplayer hall with Colyseus | done | this commit (feat: multiplayer hall with server-validated movement) | 78/0 | 2026-11-08 |
 | 6 | Couch seats with server-side validation | done | this commit (feat: couch seats with server-side validation) | 92/0 | 2026-11-08 |
 | 6b | Seated-only terminal chat | done | this commit (feat: seated-only terminal chat space) | 110/0 | 2026-11-14 |
+| 6c | Arcade cabinet framework and lobby shell | done | this commit (feat: arcade cabinet framework and lobby shell) | 137/0 | 2026-11-14 |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
 | 8 | Colossal Cave Adventure cabinet (original text adventure) | not started | - | - | - |
 | 9 | North-wall TV: synced YouTube IFrame playback | done | this commit (feat: synced YouTube TV for seated players) | 124/0 | 2026-11-14 |
@@ -324,6 +325,38 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - Clock skew between browser and server is not measured; a badly wrong client clock can cause one seek beyond the 2s tolerance.
   - The IFrame player cannot be driven from a test, so the panel's behaviour is verified only by the manual checks above.
   - Chat errors and TV errors share the server's "error" message; the overlay and the panel each show their own copy.
+- Next prompt: 7
+
+### Prompt 6c - Arcade cabinet framework and lobby shell  (2026-11-14 11:08)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: arcade cabinet framework and lobby shell"
+- What was built:
+  - shared/arcade.js - ARCADES (chess, tankers, cave with names and hall tiles matching hallLayout.js), ARCADE_RANGE, arcadeById and nearestArcade(pos, maxDistance) returning the closest cabinet inside range or null
+  - server/src/state/HallState.js - Player.activity ("" | "chess" | "tankers" | "cave") in the synchronised schema
+  - server/src/rooms/HallRoom.js - "arcade:enter" {id}: standing only, cabinet must exist, player must be within ARCADE_RANGE tiles of it; replies "arcade:entered" {ok:true, id} and records the activity. Leaving the hall removes the player, activity included.
+  - client/src/components/GameShell.jsx - full-screen overlay with a title bar, Exit button, content slot and onOpen/onClose lifecycle
+  - client/src/pages/ArcadeLobby.jsx - pixel-framed modal with the game title, Play and Close; Play opens GameShell with a "Coming soon" placeholder and a Back button
+  - client/src/game/scenes/HallScene.js + Hall.jsx - "Press E to play <name>" over the nearest cabinet, E asks the server, the lobby opens on {ok:true}, and walking stops while the rectangle is open; closes on stand, disconnect or Close
+- Tests: 137 passed, 0 failed - client 27, server 38, shared 72. New: shared/arcade.test.js (5), client/src/components/GameShell.test.jsx (3), "arcade cabinets" describe in server/src/rooms/HallRoom.test.js (5). `npm run build --workspace client` exits 0.
+- Decisions made:
+  - ARCADES stores the cabinet's top tile exactly as hallLayout.js does, and distance uses the player's feet tile, so the prompt and the server agree without a second geometry model.
+  - The client does not decide the game name from the server reply: "arcade:entered" carries only the id and Hall looks the name up in ARCADES, keeping one list of games.
+  - The lobby is its own modal, and GameShell only appears once Play is pressed: the shell is where future games plug in, so it should not surround a menu that has no game in it yet.
+  - GameShell calls onOpen on mount and onClose only from Exit; unmount does not call onClose, so closing never fires twice.
+  - The scene keeps arcadeOpen as a display flag set by the server reply, matching how chat and TV already block input.
+- Deviations: none
+- Problems hit and fixes: none
+- Manual checks for the human:
+  1. `npm run dev`, sign in, walk across to the right wall where the CHESS cabinet sits.
+  2. "Press E to play Chess" appears above it and disappears when you step away.
+  3. Press E: the lobby modal opens with the title and a stepped pixel frame; WASD no longer moves the character.
+  4. Press Play: a full-screen shell with the title and Exit shows "Coming soon" and Back. Back returns to the lobby, Exit closes everything and the character can walk again.
+  5. Sit on the couch and press E near a seat: you sit, and the arcade cannot be entered while seated.
+  6. With a second window, check that both players appear in the hall while one is inside a cabinet (activity is in the state but not drawn yet).
+- Known issues / TODO for later:
+  - activity is only cleared by leaving the hall; closing the arcade UI leaves it set until then. Prompt 7/8 can clear it when they take over.
+  - Nothing is drawn for a player inside a cabinet: the sprite still stands next to the machine.
+  - The lobby modal and the shell are unverified in a browser (tests cover GameShell only).
 - Next prompt: 7
 
 ## Decisions and changes

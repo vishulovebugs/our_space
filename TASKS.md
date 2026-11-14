@@ -3,12 +3,12 @@
 Short to-do for the current phase. The authoritative, append-only record is
 `PROGRESS_LOG.md`; the rules are in `CLAUDE.md`.
 
-## Prompt 9 - North-wall TV
+## Prompt 6c - Arcade cabinet framework and lobby shell
 
-- [x] shared: parseYouTubeUrl for watch/youtu.be/shorts/embed, currentPosition for play/pause maths
-- [x] server: tv schema, tv:play (seated, parsed, host) plus host-only pause/resume/stop, 1 play per 5s, host handover and auto-stop
-- [x] client: "Press V to open TV" hint, DOM panel with the IFrame Player API, 2s drift seek, mute with Unmute, sprite flicker for standing players
-- [x] Tests: URL parser (valid/invalid/lookalike/playlist/javascript:), position maths, seated-only start, non-host rejection, host handover, auto-stop, malformed link, rate limit
+- [x] shared: ARCADES, arcadeById, nearestArcade with a shared range constant
+- [x] server: player.activity in the schema, "arcade:enter" validated for standing, existence and distance
+- [x] client: "Press E to play <name>" prompt, ArcadeLobby modal, GameShell overlay with slot and Exit, no walking behind the UI
+- [x] Tests: nearestArcade range/closest/miss, server enter/far/unknown/seated/leave, GameShell slot and Exit
 - [x] Run the whole suite, update PROGRESS_LOG.md, commit
 
 ## Next

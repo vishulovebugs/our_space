@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 
+import { arcadeById } from "@pixel-hall/shared/arcade.js";
+
 import GameCanvas from "../components/GameCanvas.jsx";
 import TvPanel from "../components/TvPanel.jsx";
 import { gameBridge } from "../game/bridge.js";
+import ArcadeLobby from "./ArcadeLobby.jsx";
 import ChatOverlay from "./ChatOverlay.jsx";
 
 export default function Hall({ character, username, token, onLogout }) {
@@ -13,6 +16,7 @@ export default function Hall({ character, username, token, onLogout }) {
   const [tv, setTv] = useState(null);
   const [tvOpen, setTvOpen] = useState(false);
   const [tvError, setTvError] = useState("");
+  const [arcade, setArcade] = useState(null);
 
   useEffect(() => {
     const stops = [
@@ -20,6 +24,7 @@ export default function Hall({ character, username, token, onLogout }) {
         setReconnecting(true);
         setChatOpen(false);
         setTvOpen(false);
+        setArcade(null);
       }),
       gameBridge.on("connection:restored", () => setReconnecting(false)),
       gameBridge.on("player:seated", () => setSeated(true)),
@@ -46,6 +51,8 @@ export default function Hall({ character, username, token, onLogout }) {
       gameBridge.on("tv:closed", () => setTvOpen(false)),
       gameBridge.on("tv:state", (state) => setTv(state)),
       gameBridge.on("tv:error", (message) => setTvError(message)),
+      gameBridge.on("arcade:opened", ({ id }) => setArcade(arcadeById(id))),
+      gameBridge.on("arcade:closed", () => setArcade(null)),
     ];
 
     return () => stops.forEach((stop) => stop());
@@ -59,6 +66,11 @@ export default function Hall({ character, username, token, onLogout }) {
   function closeTv() {
     gameBridge.emit("tv:close");
     setTvOpen(false);
+  }
+
+  function closeArcade() {
+    gameBridge.emit("arcade:close");
+    setArcade(null);
   }
 
   const hintVisible = seated && !chatOpen && !tvOpen;
@@ -89,6 +101,7 @@ export default function Hall({ character, username, token, onLogout }) {
           onClose={closeTv}
         />
       )}
+      {arcade && <ArcadeLobby arcade={arcade} onClose={closeArcade} />}
       {reconnecting && <p className="reconnecting">Reconnecting...</p>}
     </div>
   );

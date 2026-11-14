@@ -17,6 +17,8 @@ export class Player extends Schema {
     this.character = "";
     /** Seat index, or -1 while standing. */
     this.seat = -1;
+    /** Arcade cabinet the player is inside ("chess" | "tankers" | "cave"), or "". */
+    this.activity = "";
   }
 }
 
@@ -28,6 +30,7 @@ defineTypes(Player, {
   dir: "string",
   character: "string",
   seat: "int8",
+  activity: "string",
 });
 
 /**

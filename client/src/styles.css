@@ -327,6 +327,86 @@ input {
   height: 100vh;
 }
 
+/* Arcade cabinets */
+.arcade-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.arcade-frame {
+  display: grid;
+  gap: 18px;
+  min-width: 260px;
+  padding: 24px;
+  background: #14141f;
+  text-align: center;
+  /* Hard stepped outline, pixel-art style: no rounded corners. */
+  box-shadow:
+    0 0 0 4px #34344a,
+    0 0 0 8px #1a1a26,
+    0 0 0 12px #34344a;
+}
+
+.arcade-frame h2 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.arcade-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.arcade-actions button {
+  flex: 1;
+}
+
+.game-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.game-shell-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 3px solid #34344a;
+}
+
+.game-shell-bar h2 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.game-shell-slot {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+.arcade-coming-soon {
+  margin: 0;
+  font-size: 14px;
+  color: var(--accent);
+}
+
 .game-canvas canvas {
   display: block;
   image-rendering: pixelated;

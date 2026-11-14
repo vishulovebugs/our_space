@@ -3,6 +3,7 @@ import * as Phaser from "phaser";
 import { Client } from "@colyseus/sdk";
 
 import { PLAYER_SPEED, TILE_SIZE } from "@pixel-hall/shared";
+import { nearestArcade as findNearestArcade } from "@pixel-hall/shared/arcade.js";
 import { defaultCharacter } from "@pixel-hall/shared/character.js";
 import {
   ARCADE_CABINETS,
@@ -66,6 +67,7 @@ export class HallScene extends Phaser.Scene {
     this.seatIndex = -1;
     this.chatOpen = false;
     this.tvOpen = false;
+    this.arcadeOpen = false;
     this.tvPlaying = false;
     this.tvSnapshotKey = "";
     this.userId = "";
@@ -83,6 +85,9 @@ export class HallScene extends Phaser.Scene {
     this.stopChatClose = gameBridge.on("chat:close", () => {
       this.chatOpen = false;
     });
+    this.stopArcadeClose = gameBridge.on("arcade:close", () => {
+      this.arcadeOpen = false;
+    });
     this.stopTvCommands = [
       gameBridge.on("tv:play", ({ url }) => this.room?.send("tv:play", { url })),
       gameBridge.on("tv:pause", () => this.room?.send("tv:pause")),
@@ -92,6 +97,17 @@ export class HallScene extends Phaser.Scene {
         this.tvOpen = false;
       }),
     ];
+
+    this.arcadePrompt = this.add
+      .text(0, 0, "", {
+        fontFamily: "monospace",
+        fontSize: "6px",
+        color: "#e8e8f0",
+        backgroundColor: "#141420",
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(20000)
+      .setVisible(false);
 
     this.seatPrompt = this.add
       .text(0, 0, "Press E to sit", {
@@ -125,10 +141,20 @@ export class HallScene extends Phaser.Scene {
     if (this.tvOpen) {
       this.player.anims.stop();
       this.seatPrompt.setVisible(false);
+      this.arcadePrompt.setVisible(false);
+      return;
+    }
+
+    // And for the arcade overlay: nobody walks behind it.
+    if (this.arcadeOpen) {
+      this.player.anims.stop();
+      this.seatPrompt.setVisible(false);
+      this.arcadePrompt.setVisible(false);
       return;
     }
 
     this.updateSeatPrompt();
+    this.updateArcadePrompt();
 
     // Seated players are pinned to the cushion until they stand up.
     if (this.seatIndex >= 0) {
@@ -185,6 +211,7 @@ export class HallScene extends Phaser.Scene {
     this.stopChatSend?.();
     this.stopChatClose?.();
     this.stopTvCommands?.forEach((stop) => stop());
+    this.stopArcadeClose?.();
     this.clearRemotePlayers();
     this.room?.leave();
     this.room = null;
@@ -216,6 +243,15 @@ export class HallScene extends Phaser.Scene {
       gameBridge.emit("chat:error", message ?? "");
       gameBridge.emit("tv:error", message ?? "");
     });
+    this.room.onMessage("arcade:entered", (reply) => {
+      if (!reply?.ok) return;
+
+      this.arcadeOpen = true;
+      this.player.anims.stop();
+      this.seatPrompt.setVisible(false);
+      this.arcadePrompt.setVisible(false);
+      gameBridge.emit("arcade:opened", { id: reply.id });
+    });
     this.room.onLeave(() => this.handleSocketClosed());
   }
 
@@ -225,8 +261,10 @@ export class HallScene extends Phaser.Scene {
     this.reconnecting = true;
     this.chatOpen = false;
     this.tvOpen = false;
+    this.arcadeOpen = false;
     gameBridge.emit("chat:closed");
     gameBridge.emit("tv:closed");
+    gameBridge.emit("arcade:closed");
     gameBridge.emit("connection:lost");
     this.reconnect();
   }
@@ -533,6 +571,12 @@ export class HallScene extends Phaser.Scene {
       return;
     }
 
+    const arcade = findNearestArcade(this.standingTile());
+    if (arcade) {
+      this.room?.send("arcade:enter", { id: arcade.id });
+      return;
+    }
+
     this.emitNearestInteraction();
   }
 
@@ -581,6 +625,25 @@ export class HallScene extends Phaser.Scene {
     }
 
     return false;
+  }
+
+  /** Where the player's feet are, as a tile. */
+  standingTile() {
+    return { x: pixelToTile(this.player.x), y: pixelToTile(this.player.y - 1) };
+  }
+
+  updateArcadePrompt() {
+    const arcade = this.seatIndex >= 0 ? null : findNearestArcade(this.standingTile());
+
+    if (!arcade) {
+      this.arcadePrompt.setVisible(false);
+      return;
+    }
+
+    this.arcadePrompt
+      .setText(`Press E to play ${arcade.name}`)
+      .setPosition(arcade.x * TILE_SIZE + TILE_SIZE / 2, arcade.y * TILE_SIZE - 10)
+      .setVisible(true);
   }
 
   updateSeatPrompt() {
@@ -681,7 +744,7 @@ export class HallScene extends Phaser.Scene {
   }
 
   emitNearestInteraction() {
-    const standing = { x: pixelToTile(this.player.x), y: pixelToTile(this.player.y - 1) };
+    const standing = this.standingTile();
 
     const candidates = [
       ...SEATS.map((seat) => ({
