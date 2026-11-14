@@ -10,7 +10,9 @@
     "./hallLayout.js": "./hallLayout.js",
     "./movement.js": "./movement.js",
     "./seats.js": "./seats.js",
-    "./validators.js": "./validators.js"
+    "./tvSync.js": "./tvSync.js",
+    "./validators.js": "./validators.js",
+    "./youtube.js": "./youtube.js"
   },
   "scripts": {
     "test": "vitest run"

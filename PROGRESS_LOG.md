@@ -13,7 +13,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 6b | Seated-only terminal chat | done | this commit (feat: seated-only terminal chat space) | 110/0 | 2026-11-14 |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
 | 8 | Colossal Cave Adventure cabinet (original text adventure) | not started | - | - | - |
-| 9 | North-wall TV: synced YouTube IFrame playback | not started | - | - | - |
+| 9 | North-wall TV: synced YouTube IFrame playback | done | this commit (feat: synced YouTube TV for seated players) | 124/0 | 2026-11-14 |
 | 10 | South door: exit logs the player out | not started | - | - | - |
 | 11 | Procedural pixel art pass | not started | - | - | - |
 | 12 | Hardening: validation, rate limits, auth-bypass guard | not started | - | - | - |
@@ -287,6 +287,43 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - The overlay relies on the Phaser keyboard not capturing typed letters; this is only covered by the manual check above.
   - Reconnecting resets a player's rate-limit window and the in-memory history is lost when the room is disposed.
   - Chat is not scrollable with the wheel while typing; it auto-scrolls to the newest line instead.
+- Next prompt: 7
+
+### Prompt 9 - North-wall TV: synced YouTube IFrame playback  (2026-11-14 11:00)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: synced YouTube TV for seated players"
+- What was built:
+  - shared/youtube.js - parseYouTubeUrl accepts youtube.com/watch?v=, youtu.be/, /shorts/, /embed/ (www and m. hosts, with or without scheme, extra params) and returns an 11-character id or null
+  - shared/tvSync.js - currentPosition(tvState, now): adds elapsed time while playing, holds the position while paused, clamps at zero and never rewinds on a clock that runs backwards
+  - server/src/state/HallState.js - Tv schema {videoId, startedAt, position, playing, hostId} on the hall state
+  - server/src/rooms/HallRoom.js - tv:play (seated only, URL parsed on the server, sender becomes host, one play per 5s per player), tv:pause / tv:resume / tv:stop (host only); host stands or leaves -> next seated player takes the remote, nobody seated -> TV stops; malformed links answer with an error and change nothing
+  - client/src/components/TvPanel.jsx - DOM side panel with the official IFrame Player API: URL input, drift-corrected seek beyond 2s, mute-on-autoplay with an Unmute button, host-only controls
+  - client/src/pages/Hall.jsx + HallScene.js - "Press V to open TV" hint while seated, V opens the panel, the panel closes when standing or disconnecting, scene mirrors the tv state to React and flickers the TV sprite for standing players
+- Tests: 124 passed, 0 failed - client 24, server 33, shared 67. New: shared/youtube.test.js (2 tests, 12 valid and 18 invalid links), shared/tvSync.test.js (5), "shared tv" describe in server/src/rooms/HallRoom.test.js (7). `npm run build --workspace client` exits 0.
+- Decisions made:
+  - hostId is the user id, not the session id, so a reconnect does not lose the remote and two sessions of one account cannot both be host.
+  - The host is reassigned from whatever the room's clients report as seated at that moment (refreshHost), which also handles the last player leaving: with nobody seated the TV is reset to its empty state rather than left playing to an audience of none.
+  - The TV always starts muted and offers Unmute. Autoplay-with-sound is blocked until a gesture on most browsers, so muted start is the only predictable behaviour; the prompt's fallback is the default rather than a retry path.
+  - Pause stores currentPosition(tv, now) as the new position and resets startedAt, so a paused TV needs no drift maths and resume simply restarts the clock.
+  - The client never trusts its own URL parse for authority: it sends the raw link and the server decides, since the same parser is shared but the server's answer is the state.
+  - Playback drift uses client Date.now() against the server's startedAt; a skewed clock can therefore seek once, but not rewind (currentPosition clamps elapsed to zero).
+- Deviations:
+  - Videos are embedded only through the IFrame Player API, as required; nothing is downloaded or proxied.
+  - The TV sprite flicker is a random alpha wobble on the existing sprite rather than new procedural frames, to keep the art pass (Prompt 11) as the one place pixels change.
+- Problems hit and fixes:
+  - The first version of currentPosition let a client clock behind the server's subtract time and rewind the video; the negative-time test caught it and elapsed is now clamped at zero.
+- Manual checks for the human:
+  1. `npm run dev`, two windows, both sit on the couch, press V in each.
+  2. Paste `https://www.youtube.com/watch?v=dQw4w9WgXcQ` in one window and press Play: both panels start the same video at roughly the same point; click Unmute to hear it.
+  3. Pause in the host window: both pause. Wait a few seconds, resume: both continue from the paused spot.
+  4. Try Pause in the non-host window: the button is disabled and nothing changes.
+  5. Have the host stand up: the remote passes to the other seated player, whose Pause button becomes enabled.
+  6. Have everyone stand: the panels close and the TV stops. Stand back and walk past without sitting: the TV screen flickers only while something is playing.
+  7. Paste a Vimeo or playlist link: an error appears in the panel and the current video keeps playing.
+- Known issues / TODO for later:
+  - Clock skew between browser and server is not measured; a badly wrong client clock can cause one seek beyond the 2s tolerance.
+  - The IFrame player cannot be driven from a test, so the panel's behaviour is verified only by the manual checks above.
+  - Chat errors and TV errors share the server's "error" message; the overlay and the panel each show their own copy.
 - Next prompt: 7
 
 ## Decisions and changes

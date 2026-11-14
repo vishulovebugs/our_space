@@ -174,7 +174,7 @@ input {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 2;
+  z-index: 6;
   padding: 8px 12px;
 }
 
@@ -200,6 +200,60 @@ input {
   margin: 0;
   color: var(--accent);
   text-shadow: 0 0 6px currentColor;
+}
+
+/* The wall TV panel, drawn in the DOM beside the canvas */
+.tv-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, 100vw);
+  padding: 12px;
+  background: #14141f;
+  border-left: 3px solid #34344a;
+  overflow-y: auto;
+}
+
+.tv-frame {
+  aspect-ratio: 16 / 9;
+  background: #000;
+}
+
+.tv-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.tv-form {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.tv-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  border-width: 2px;
+}
+
+.tv-form button,
+.tv-controls button {
+  padding: 8px 12px;
+}
+
+.tv-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Terminal chat: pitch black, monospace, no chrome at all */

@@ -5,6 +5,8 @@ import { CHAT_MESSAGE_MAX } from "@pixel-hall/shared/chatParser.js";
 import { HALL_LAYOUT, SEATS } from "@pixel-hall/shared/hallLayout.js";
 import { clampToWalkable, isStandablePosition, tileCentre } from "@pixel-hall/shared/movement.js";
 import { isSeatIndex, seatAnchor, seatStandTile, seatedPlayers } from "@pixel-hall/shared/seats.js";
+import { currentPosition } from "@pixel-hall/shared/tvSync.js";
+import { parseYouTubeUrl } from "@pixel-hall/shared/youtube.js";
 
 import { verifyToken } from "../../auth.js";
 import { loadProfile } from "../supabase.js";
@@ -23,6 +25,9 @@ const CHAT_WINDOW_MS = 10_000;
 /** How much chat a player gets when they open the terminal. */
 const CHAT_HISTORY_LIMIT = 30;
 
+/** The TV remote: one new video per player every 5 seconds. */
+const TV_PLAY_COOLDOWN_MS = 5_000;
+
 const SPAWN_TILE = { x: 14, y: 17 };
 const DIRECTIONS = ["down", "left", "right", "up"];
 
@@ -38,12 +43,17 @@ export class HallRoom extends Room {
     // Chat lives in memory only: it is never written to the database.
     this.chatHistory = [];
     this.chatSentAt = new Map();
+    this.tvPlayAt = new Map();
 
     this.onMessage("move", (client, payload) => this.handleMove(client, payload));
     this.onMessage("sit", (client, payload) => this.handleSit(client, payload));
     this.onMessage("stand", (client) => this.handleStand(client));
     this.onMessage("chat", (client, payload) => this.handleChat(client, payload));
     this.onMessage("chat:open", (client) => this.handleChatOpen(client));
+    this.onMessage("tv:play", (client, payload) => this.handleTvPlay(client, payload));
+    this.onMessage("tv:pause", (client) => this.handleTvPause(client));
+    this.onMessage("tv:resume", (client) => this.handleTvResume(client));
+    this.onMessage("tv:stop", (client) => this.handleTvStop(client));
   }
 
   async onAuth(_client, options) {
@@ -93,6 +103,7 @@ export class HallRoom extends Room {
 
   onLeave(client) {
     this.dropPlayer(client.sessionId);
+    this.refreshHost();
 
     const userId = client.auth?.userId;
     if (userId && this.sessionByUser.get(userId) === client.sessionId) {
@@ -184,6 +195,9 @@ export class HallRoom extends Room {
     player.y = (tile.y + 1) * TILE_SIZE;
     player.dir = "down";
     this.lastMoveAt.set(client.sessionId, Date.now());
+
+    // Leaving the couch gives up the remote, and may end the show.
+    this.refreshHost();
   }
 
   /**
@@ -234,6 +248,121 @@ export class HallRoom extends Room {
     client.send("chat:history", { messages: [...this.chatHistory] });
   }
 
+  /**
+   * Anyone seated may put a video on, and doing so makes them the host. The
+   * link is parsed on the server: only a real 11-character video id is stored.
+   */
+  handleTvPlay(client, payload) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+
+    if (player.seat < 0) {
+      return this.fail(client, "Only seated players can use the TV.");
+    }
+
+    const now = Date.now();
+    if (now - (this.tvPlayAt.get(client.sessionId) ?? 0) < TV_PLAY_COOLDOWN_MS) {
+      return this.fail(client, "Wait a moment before changing the video.");
+    }
+
+    const videoId = parseYouTubeUrl(payload?.url);
+    if (!videoId) {
+      return this.fail(client, "That is not a YouTube link.");
+    }
+
+    this.tvPlayAt.set(client.sessionId, now);
+
+    const tv = this.state.tv;
+    tv.videoId = videoId;
+    tv.startedAt = now;
+    tv.position = 0;
+    tv.playing = true;
+    tv.hostId = player.id;
+  }
+
+  handleTvPause(client) {
+    const tv = this.requireTvHost(client);
+    if (!tv) return;
+
+    const now = Date.now();
+    tv.position = currentPosition(tv, now);
+    tv.startedAt = now;
+    tv.playing = false;
+  }
+
+  handleTvResume(client) {
+    const tv = this.requireTvHost(client);
+    if (!tv) return;
+
+    tv.startedAt = Date.now();
+    tv.playing = true;
+  }
+
+  handleTvStop(client) {
+    const tv = this.requireTvHost(client);
+    if (!tv) return;
+
+    this.stopTv();
+  }
+
+  /** Pause, resume and stop are the host's alone. */
+  requireTvHost(client) {
+    const player = this.state.players.get(client.sessionId);
+    const tv = this.state.tv;
+
+    if (!player) return null;
+
+    if (player.seat < 0) {
+      this.fail(client, "Only seated players can use the TV.");
+      return null;
+    }
+
+    if (!tv.videoId) {
+      this.fail(client, "Nothing is playing.");
+      return null;
+    }
+
+    if (tv.hostId !== player.id) {
+      this.fail(client, "Only the host controls the TV.");
+      return null;
+    }
+
+    return tv;
+  }
+
+  /**
+   * The remote follows the couch: if the host is no longer seated, the next
+   * seated player takes over, and with nobody left seated the TV stops.
+   */
+  refreshHost() {
+    const tv = this.state.tv;
+    if (!tv.videoId) return;
+
+    const seated = [];
+    for (const client of this.clients) {
+      const player = this.state.players.get(client.sessionId);
+      if (player && player.seat >= 0) seated.push(player);
+    }
+
+    if (seated.length === 0) {
+      this.stopTv();
+      return;
+    }
+
+    if (!seated.some((player) => player.id === tv.hostId)) {
+      tv.hostId = seated[0].id;
+    }
+  }
+
+  stopTv() {
+    const tv = this.state.tv;
+    tv.videoId = "";
+    tv.startedAt = 0;
+    tv.position = 0;
+    tv.playing = false;
+    tv.hostId = "";
+  }
+
   /** A standing player is not in the chat space at all, not even as a listener. */
   sendToSeated(type, payload) {
     for (const other of this.clients) {
@@ -258,6 +387,7 @@ export class HallRoom extends Room {
     this.state.players.delete(sessionId);
     this.lastMoveAt.delete(sessionId);
     this.chatSentAt.delete(sessionId);
+    this.tvPlayAt.delete(sessionId);
   }
 }
 

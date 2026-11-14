@@ -384,3 +384,135 @@ describe("terminal chat", () => {
     expect(messages.at(-1)).toMatchObject({ username: "pixel_cat", text: "before you arrived" });
   });
 });
+
+describe("shared tv", () => {
+  const VIDEO = "dQw4w9WgXcQ";
+  const OTHER_VIDEO = "aaaaaaaaaaa";
+  const LINK = `https://www.youtube.com/watch?v=${VIDEO}`;
+
+  async function seatPlayer(token, seatIndex) {
+    const client = await join({ token });
+    const serverRoom = colyseus.getRoomById(client.roomId);
+    const anchor = seatAnchor(SEATS[seatIndex]);
+
+    const player = serverRoom.state.players.get(client.sessionId);
+    player.x = anchor.x;
+    player.y = anchor.y;
+
+    client.send("sit", { seatIndex });
+    await waitUntil(() => serverRoom.state.players.get(client.sessionId)?.seat === seatIndex);
+
+    return { client, serverRoom };
+  }
+
+  it("refuses to start the TV for a standing player", async () => {
+    const alice = await join({ token: "test:user-alice:pixel_cat" });
+    const serverRoom = colyseus.getRoomById(alice.roomId);
+
+    const error = alice.waitForMessage("error");
+    alice.send("tv:play", { url: LINK });
+
+    expect((await error).message).toBeTruthy();
+    expect(serverRoom.state.tv.videoId).toBe("");
+    expect(serverRoom.state.tv.playing).toBe(false);
+  });
+
+  it("plays what a seated player puts on and makes them host", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const tv = alice.serverRoom.state.tv;
+
+    alice.client.send("tv:play", { url: LINK });
+    await waitUntil(() => tv.videoId === VIDEO);
+
+    expect(tv.videoId).toBe(VIDEO);
+    expect(tv.playing).toBe(true);
+    expect(tv.position).toBe(0);
+    expect(tv.hostId).toBe("user-alice");
+    expect(tv.startedAt).toBeGreaterThan(0);
+  });
+
+  it("rejects pause from anyone but the host", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const bob = await seatPlayer("test:user-bob:pixel_dog", 3);
+
+    alice.client.send("tv:play", { url: LINK });
+    await waitUntil(() => alice.serverRoom.state.tv.videoId === VIDEO);
+
+    const error = bob.client.waitForMessage("error");
+    bob.client.send("tv:pause");
+
+    expect((await error).message).toBeTruthy();
+    expect(alice.serverRoom.state.tv.playing).toBe(true);
+
+    // The host can, and pausing freezes the position where it was.
+    alice.client.send("tv:pause");
+    await waitUntil(() => alice.serverRoom.state.tv.playing === false);
+
+    expect(alice.serverRoom.state.tv.position).toBeGreaterThanOrEqual(0);
+  });
+
+  it("passes the remote to another seated player when the host leaves", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const bob = await seatPlayer("test:user-bob:pixel_dog", 3);
+
+    alice.client.send("tv:play", { url: LINK });
+    await waitUntil(() => alice.serverRoom.state.tv.hostId === "user-alice");
+
+    await alice.client.leave();
+    await waitUntil(() => bob.serverRoom.state.tv.hostId === "user-bob");
+
+    expect(bob.serverRoom.state.tv.hostId).toBe("user-bob");
+    expect(bob.serverRoom.state.tv.videoId).toBe(VIDEO);
+  });
+
+  it("stops the TV when the last seated player stands up", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+
+    alice.client.send("tv:play", { url: LINK });
+    await waitUntil(() => alice.serverRoom.state.tv.videoId === VIDEO);
+
+    alice.client.send("stand");
+    await waitUntil(() => alice.serverRoom.state.tv.videoId === "");
+
+    const tv = alice.serverRoom.state.tv;
+    expect(tv.videoId).toBe("");
+    expect(tv.playing).toBe(false);
+    expect(tv.hostId).toBe("");
+  });
+
+  it("rejects a malformed link and leaves the state alone", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const tv = alice.serverRoom.state.tv;
+
+    const first = alice.client.waitForMessage("error");
+    alice.client.send("tv:play", { url: "https://vimeo.com/12345678901" });
+
+    expect((await first).message).toBe("That is not a YouTube link.");
+    expect(tv.videoId).toBe("");
+    expect(tv.playing).toBe(false);
+
+    // A rejected link does not spend the cooldown, so the next real one works.
+    alice.client.send("tv:play", { url: LINK });
+    await waitUntil(() => tv.videoId === VIDEO);
+
+    const second = alice.client.waitForMessage("error");
+    alice.client.send("tv:play", { url: "javascript:alert(1)" });
+    await second;
+
+    expect(tv.videoId).toBe(VIDEO);
+  });
+
+  it("rate limits new videos to one per five seconds", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const tv = alice.serverRoom.state.tv;
+
+    alice.client.send("tv:play", { url: LINK });
+    await waitUntil(() => tv.videoId === VIDEO);
+
+    const error = alice.client.waitForMessage("error");
+    alice.client.send("tv:play", { url: `https://youtu.be/${OTHER_VIDEO}` });
+
+    expect((await error).message).toBeTruthy();
+    expect(tv.videoId).toBe(VIDEO);
+  });
+});

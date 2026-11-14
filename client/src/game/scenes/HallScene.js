@@ -65,6 +65,10 @@ export class HallScene extends Phaser.Scene {
     this.facing = "down";
     this.seatIndex = -1;
     this.chatOpen = false;
+    this.tvOpen = false;
+    this.tvPlaying = false;
+    this.tvSnapshotKey = "";
+    this.userId = "";
 
     createHallTextures(this);
     this.drawRoom();
@@ -79,6 +83,15 @@ export class HallScene extends Phaser.Scene {
     this.stopChatClose = gameBridge.on("chat:close", () => {
       this.chatOpen = false;
     });
+    this.stopTvCommands = [
+      gameBridge.on("tv:play", ({ url }) => this.room?.send("tv:play", { url })),
+      gameBridge.on("tv:pause", () => this.room?.send("tv:pause")),
+      gameBridge.on("tv:resume", () => this.room?.send("tv:resume")),
+      gameBridge.on("tv:stop", () => this.room?.send("tv:stop")),
+      gameBridge.on("tv:close", () => {
+        this.tvOpen = false;
+      }),
+    ];
 
     this.seatPrompt = this.add
       .text(0, 0, "Press E to sit", {
@@ -99,9 +112,17 @@ export class HallScene extends Phaser.Scene {
 
   update(_time, delta) {
     this.updateRemotePlayers();
+    this.updateTv();
 
     // While the terminal is open it owns the keyboard: no walking, no standing.
     if (this.chatOpen) {
+      this.player.anims.stop();
+      this.seatPrompt.setVisible(false);
+      return;
+    }
+
+    // Same for the TV panel: typing a link must not steer the character.
+    if (this.tvOpen) {
       this.player.anims.stop();
       this.seatPrompt.setVisible(false);
       return;
@@ -119,6 +140,8 @@ export class HallScene extends Phaser.Scene {
         this.standUp();
       } else if (Phaser.Input.Keyboard.JustDown(this.keys.chat)) {
         this.openChat();
+      } else if (Phaser.Input.Keyboard.JustDown(this.keys.tv)) {
+        this.openTv();
       }
 
       return;
@@ -161,6 +184,7 @@ export class HallScene extends Phaser.Scene {
     this.shuttingDown = true;
     this.stopChatSend?.();
     this.stopChatClose?.();
+    this.stopTvCommands?.forEach((stop) => stop());
     this.clearRemotePlayers();
     this.room?.leave();
     this.room = null;
@@ -176,7 +200,10 @@ export class HallScene extends Phaser.Scene {
       character: JSON.stringify(this.character),
     });
 
-    this.room.onStateChange((state) => this.syncPlayers(state));
+    this.room.onStateChange((state) => {
+      this.syncPlayers(state);
+      this.syncTv(state);
+    });
     this.room.onMessage("snap", (position) => {
       this.player.x = position.x;
       this.player.y = position.y;
@@ -185,7 +212,10 @@ export class HallScene extends Phaser.Scene {
     this.room.onMessage("chat:history", ({ messages }) =>
       gameBridge.emit("chat:history", messages ?? []),
     );
-    this.room.onMessage("error", ({ message }) => gameBridge.emit("chat:error", message ?? ""));
+    this.room.onMessage("error", ({ message }) => {
+      gameBridge.emit("chat:error", message ?? "");
+      gameBridge.emit("tv:error", message ?? "");
+    });
     this.room.onLeave(() => this.handleSocketClosed());
   }
 
@@ -194,7 +224,9 @@ export class HallScene extends Phaser.Scene {
 
     this.reconnecting = true;
     this.chatOpen = false;
+    this.tvOpen = false;
     gameBridge.emit("chat:closed");
+    gameBridge.emit("tv:closed");
     gameBridge.emit("connection:lost");
     this.reconnect();
   }
@@ -239,8 +271,41 @@ export class HallScene extends Phaser.Scene {
     }
   }
 
+  /** Mirrors the shared TV state to React, only when something changed. */
+  syncTv(state) {
+    const tv = state?.tv;
+    if (!tv) return;
+
+    this.tvPlaying = Boolean(tv.playing) && tv.videoId !== "";
+
+    const snapshot = {
+      videoId: tv.videoId,
+      startedAt: tv.startedAt,
+      position: tv.position,
+      playing: Boolean(tv.playing),
+      hostId: tv.hostId,
+      isHost: tv.hostId !== "" && tv.hostId === this.userId,
+    };
+
+    const key = JSON.stringify(snapshot);
+    if (key === this.tvSnapshotKey) return;
+
+    this.tvSnapshotKey = key;
+    gameBridge.emit("tv:state", snapshot);
+  }
+
+  /** Standing players see the screen flicker; the panel carries the picture. */
+  updateTv() {
+    if (!this.tvSprite) return;
+
+    const flickering = this.tvPlaying && this.seatIndex < 0;
+    this.tvSprite.setAlpha(flickering ? 0.6 + Math.random() * 0.4 : 1);
+  }
+
   /** The server has the last word, on both where we are and whether we sit. */
   reconcileOwnPosition(remote) {
+    this.userId = remote.id ?? this.userId;
+
     const seat = remote.seat ?? -1;
 
     if (seat !== this.seatIndex) {
@@ -272,9 +337,11 @@ export class HallScene extends Phaser.Scene {
 
     this.player.setTexture(LOCAL_TEXTURE_KEY, 0);
 
-    // Standing up leaves the chat space: the overlay goes with the seat.
+    // Standing up leaves the chat and the TV panel: both go with the seat.
     this.chatOpen = false;
+    this.tvOpen = false;
     gameBridge.emit("chat:closed");
+    gameBridge.emit("tv:closed");
     gameBridge.emit("player:stood", { seatId: SEATS[previous]?.id });
   }
 
@@ -482,6 +549,14 @@ export class HallScene extends Phaser.Scene {
     this.room.send("chat:open");
   }
 
+  openTv() {
+    if (this.tvOpen || this.seatIndex < 0) return;
+
+    this.tvOpen = true;
+    this.player.anims.stop();
+    gameBridge.emit("tv:opened");
+  }
+
   nearestFreeSeat() {
     if (!this.room) return null;
 
@@ -546,7 +621,7 @@ export class HallScene extends Phaser.Scene {
         .setDepth(seat.y * TILE_SIZE + TILE_SIZE - 1);
     }
 
-    this.add
+    this.tvSprite = this.add
       .image(TV.x * TILE_SIZE, TV.y * TILE_SIZE, "tv")
       .setOrigin(0, 0)
       .setDepth(TV.y * TILE_SIZE + TV.h * TILE_SIZE);
@@ -584,6 +659,7 @@ export class HallScene extends Phaser.Scene {
       interactAlt: "SPACE",
       stand: "ESC",
       chat: "T",
+      tv: "V",
     });
   }
 
