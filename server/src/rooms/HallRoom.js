@@ -1,6 +1,7 @@
 import { Room } from "colyseus";
 
 import { MAX_PLAYERS_PER_HALL, PLAYER_SPEED, TILE_SIZE } from "@pixel-hall/shared";
+import { CHAT_MESSAGE_MAX } from "@pixel-hall/shared/chatParser.js";
 import { HALL_LAYOUT, SEATS } from "@pixel-hall/shared/hallLayout.js";
 import { clampToWalkable, isStandablePosition, tileCentre } from "@pixel-hall/shared/movement.js";
 import { isSeatIndex, seatAnchor, seatStandTile, seatedPlayers } from "@pixel-hall/shared/seats.js";
@@ -15,6 +16,13 @@ const MOVE_TOLERANCE_PX = 8;
 /** How close to a seat anchor a player must stand to sit down. */
 const SIT_RANGE_PX = 24;
 
+/** Chat rate limit: at most 5 messages in any 10 second window, per player. */
+const CHAT_MAX_PER_WINDOW = 5;
+const CHAT_WINDOW_MS = 10_000;
+
+/** How much chat a player gets when they open the terminal. */
+const CHAT_HISTORY_LIMIT = 30;
+
 const SPAWN_TILE = { x: 14, y: 17 };
 const DIRECTIONS = ["down", "left", "right", "up"];
 
@@ -27,9 +35,15 @@ export class HallRoom extends Room {
     this.sessionByUser = new Map();
     this.lastMoveAt = new Map();
 
+    // Chat lives in memory only: it is never written to the database.
+    this.chatHistory = [];
+    this.chatSentAt = new Map();
+
     this.onMessage("move", (client, payload) => this.handleMove(client, payload));
     this.onMessage("sit", (client, payload) => this.handleSit(client, payload));
     this.onMessage("stand", (client) => this.handleStand(client));
+    this.onMessage("chat", (client, payload) => this.handleChat(client, payload));
+    this.onMessage("chat:open", (client) => this.handleChatOpen(client));
   }
 
   async onAuth(_client, options) {
@@ -172,6 +186,62 @@ export class HallRoom extends Room {
     this.lastMoveAt.set(client.sessionId, Date.now());
   }
 
+  /**
+   * Chat is a privilege of the couch: only seated players may send, and only
+   * seated players receive. Text is cleaned and rate limited before it goes out.
+   */
+  handleChat(client, payload) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+
+    if (player.seat < 0) {
+      return this.fail(client, "Only seated players can chat.");
+    }
+
+    const text = sanitizeChat(payload?.text);
+    if (text === "") return;
+
+    const now = Date.now();
+    const recent = (this.chatSentAt.get(client.sessionId) ?? []).filter(
+      (at) => now - at < CHAT_WINDOW_MS,
+    );
+
+    if (recent.length >= CHAT_MAX_PER_WINDOW) {
+      this.chatSentAt.set(client.sessionId, recent);
+      return this.fail(client, "Too fast. Wait a moment.");
+    }
+
+    recent.push(now);
+    this.chatSentAt.set(client.sessionId, recent);
+
+    const message = { username: player.username, text, ts: now };
+
+    this.chatHistory.push(message);
+    if (this.chatHistory.length > CHAT_HISTORY_LIMIT) this.chatHistory.shift();
+
+    this.sendToSeated("chat", message);
+  }
+
+  /** Opening the terminal replays the last few lines, seated players only. */
+  handleChatOpen(client) {
+    const player = this.state.players.get(client.sessionId);
+    if (!player) return;
+
+    if (player.seat < 0) {
+      return this.fail(client, "Only seated players can chat.");
+    }
+
+    client.send("chat:history", { messages: [...this.chatHistory] });
+  }
+
+  /** A standing player is not in the chat space at all, not even as a listener. */
+  sendToSeated(type, payload) {
+    for (const other of this.clients) {
+      const player = this.state.players.get(other.sessionId);
+      if (player && player.seat >= 0) other.send(type, payload);
+    }
+  }
+
   seatIsTaken(seatIndex) {
     return seatedPlayers(this.state).some((entry) => entry.seatIndex === seatIndex);
   }
@@ -187,7 +257,24 @@ export class HallRoom extends Room {
   dropPlayer(sessionId) {
     this.state.players.delete(sessionId);
     this.lastMoveAt.delete(sessionId);
+    this.chatSentAt.delete(sessionId);
   }
+}
+
+/**
+ * Removes HTML tags and control characters, collapses whitespace and caps the
+ * length. The server trusts no text, including its own broadcast.
+ */
+function sanitizeChat(value) {
+  if (typeof value !== "string") return "";
+
+  return value
+    .replace(/<[^>]*>/g, "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CHAT_MESSAGE_MAX)
+    .trim();
 }
 
 function normalizeCharacter(value) {

@@ -6,6 +6,7 @@
   "exports": {
     ".": "./constants.js",
     "./character.js": "./character.js",
+    "./chatParser.js": "./chatParser.js",
     "./hallLayout.js": "./hallLayout.js",
     "./movement.js": "./movement.js",
     "./seats.js": "./seats.js",

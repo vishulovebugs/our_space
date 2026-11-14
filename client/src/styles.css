@@ -191,6 +191,83 @@ input {
   color: var(--accent);
 }
 
+.hall .chat-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  margin: 0;
+  color: var(--accent);
+  text-shadow: 0 0 6px currentColor;
+}
+
+/* Terminal chat: pitch black, monospace, no chrome at all */
+.chat-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  background: #000;
+  color: var(--accent);
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-shadow: 0 0 6px currentColor;
+}
+
+.chat-lines {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.chat-lines::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-line {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* New lines fade in, so messages appear one at a time. */
+  animation: chat-line-in 140ms steps(2, end);
+}
+
+.chat-error {
+  opacity: 0.55;
+}
+
+.chat-input-line {
+  display: flex;
+  gap: 0;
+  margin: 0;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-shadow: inherit;
+  outline: none;
+  caret-color: currentColor;
+}
+
+@keyframes chat-line-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .game-canvas {
   width: 100%;
   height: 100vh;
@@ -200,3 +277,4 @@ input {
   display: block;
   image-rendering: pixelated;
 }
+

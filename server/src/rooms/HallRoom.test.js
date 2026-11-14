@@ -291,3 +291,96 @@ describe("couch seats", () => {
     expect(serverRoom.state.players.get(client.sessionId).seat).toBe(SEAT_INDEX);
   });
 });
+
+describe("terminal chat", () => {
+  async function seatPlayer(token, seatIndex) {
+    const client = await join({ token });
+    const serverRoom = colyseus.getRoomById(client.roomId);
+    const anchor = seatAnchor(SEATS[seatIndex]);
+
+    const player = serverRoom.state.players.get(client.sessionId);
+    player.x = anchor.x;
+    player.y = anchor.y;
+
+    client.send("sit", { seatIndex });
+    await waitUntil(() => serverRoom.state.players.get(client.sessionId)?.seat === seatIndex);
+
+    return { client, serverRoom };
+  }
+
+  it("refuses chat from a standing player", async () => {
+    const alice = await join({ token: "test:user-alice:pixel_cat" });
+
+    const error = alice.waitForMessage("error");
+    alice.send("chat", { text: "hello" });
+
+    expect((await error).message).toBeTruthy();
+  });
+
+  it("sends from a seated player to seated players only", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const bob = await seatPlayer("test:user-bob:pixel_dog", 3);
+    const carol = await join({ token: "test:user-carol:pixel_owl" });
+
+    const carolHeard = [];
+    carol.onMessage("chat", (message) => carolHeard.push(message));
+
+    const received = bob.client.waitForMessage("chat");
+    alice.client.send("chat", { text: "hi couch" });
+
+    const message = await received;
+    expect(message.username).toBe("pixel_cat");
+    expect(message.text).toBe("hi couch");
+    expect(typeof message.ts).toBe("number");
+
+    await wait(300);
+    expect(carolHeard).toHaveLength(0);
+  });
+
+  it("strips tags and control characters before broadcasting", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const bob = await seatPlayer("test:user-bob:pixel_dog", 3);
+
+    const received = bob.client.waitForMessage("chat");
+    alice.client.send("chat", { text: "<script>alert(1)</script>" });
+
+    expect((await received).text).toBe("alert(1)");
+  });
+
+  it("drops the sixth message in ten seconds with an error", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const bob = await seatPlayer("test:user-bob:pixel_dog", 3);
+
+    const heard = [];
+    bob.client.onMessage("chat", (message) => heard.push(message));
+
+    for (let index = 0; index < 5; index++) {
+      alice.client.send("chat", { text: `line ${index}` });
+    }
+    await waitUntil(() => heard.length === 5);
+
+    const error = alice.client.waitForMessage("error");
+    alice.client.send("chat", { text: "line 5" });
+
+    expect((await error).message).toBeTruthy();
+    await wait(300);
+    expect(heard).toHaveLength(5);
+  });
+
+  it("replays the history to a player who sits later", async () => {
+    const alice = await seatPlayer("test:user-alice:pixel_cat", 2);
+    const bob = await seatPlayer("test:user-bob:pixel_dog", 3);
+
+    const heard = bob.client.waitForMessage("chat");
+    alice.client.send("chat", { text: "before you arrived" });
+    await heard;
+
+    const carol = await seatPlayer("test:user-carol:pixel_owl", 4);
+
+    const history = carol.client.waitForMessage("chat:history");
+    carol.client.send("chat:open");
+
+    const { messages } = await history;
+    expect(messages.at(-1)).toMatchObject({ username: "pixel_cat", text: "before you arrived" });
+  });
+});

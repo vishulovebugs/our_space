@@ -64,11 +64,21 @@ export class HallScene extends Phaser.Scene {
     this.lastSent = { x: 0, y: 0 };
     this.facing = "down";
     this.seatIndex = -1;
+    this.chatOpen = false;
 
     createHallTextures(this);
     this.drawRoom();
     this.createLocalPlayer();
     this.createInput();
+
+    // React owns the terminal; the scene only carries its messages.
+    this.stopChatSend = gameBridge.on("chat:send", ({ message }) => {
+      if (!this.chatOpen) return;
+      this.room?.send("chat", { text: message });
+    });
+    this.stopChatClose = gameBridge.on("chat:close", () => {
+      this.chatOpen = false;
+    });
 
     this.seatPrompt = this.add
       .text(0, 0, "Press E to sit", {
@@ -89,6 +99,14 @@ export class HallScene extends Phaser.Scene {
 
   update(_time, delta) {
     this.updateRemotePlayers();
+
+    // While the terminal is open it owns the keyboard: no walking, no standing.
+    if (this.chatOpen) {
+      this.player.anims.stop();
+      this.seatPrompt.setVisible(false);
+      return;
+    }
+
     this.updateSeatPrompt();
 
     // Seated players are pinned to the cushion until they stand up.
@@ -99,6 +117,8 @@ export class HallScene extends Phaser.Scene {
 
       if (this.interactPressed() || Phaser.Input.Keyboard.JustDown(this.keys.stand)) {
         this.standUp();
+      } else if (Phaser.Input.Keyboard.JustDown(this.keys.chat)) {
+        this.openChat();
       }
 
       return;
@@ -139,6 +159,8 @@ export class HallScene extends Phaser.Scene {
 
   shutdown() {
     this.shuttingDown = true;
+    this.stopChatSend?.();
+    this.stopChatClose?.();
     this.clearRemotePlayers();
     this.room?.leave();
     this.room = null;
@@ -159,6 +181,11 @@ export class HallScene extends Phaser.Scene {
       this.player.x = position.x;
       this.player.y = position.y;
     });
+    this.room.onMessage("chat", (message) => gameBridge.emit("chat:message", message));
+    this.room.onMessage("chat:history", ({ messages }) =>
+      gameBridge.emit("chat:history", messages ?? []),
+    );
+    this.room.onMessage("error", ({ message }) => gameBridge.emit("chat:error", message ?? ""));
     this.room.onLeave(() => this.handleSocketClosed());
   }
 
@@ -166,6 +193,8 @@ export class HallScene extends Phaser.Scene {
     if (this.shuttingDown || this.reconnecting) return;
 
     this.reconnecting = true;
+    this.chatOpen = false;
+    gameBridge.emit("chat:closed");
     gameBridge.emit("connection:lost");
     this.reconnect();
   }
@@ -242,6 +271,10 @@ export class HallScene extends Phaser.Scene {
     }
 
     this.player.setTexture(LOCAL_TEXTURE_KEY, 0);
+
+    // Standing up leaves the chat space: the overlay goes with the seat.
+    this.chatOpen = false;
+    gameBridge.emit("chat:closed");
     gameBridge.emit("player:stood", { seatId: SEATS[previous]?.id });
   }
 
@@ -440,6 +473,15 @@ export class HallScene extends Phaser.Scene {
     this.room?.send("stand");
   }
 
+  openChat() {
+    if (this.chatOpen || !this.room || this.seatIndex < 0) return;
+
+    this.chatOpen = true;
+    this.player.anims.stop();
+    gameBridge.emit("chat:opened");
+    this.room.send("chat:open");
+  }
+
   nearestFreeSeat() {
     if (!this.room) return null;
 
@@ -541,6 +583,7 @@ export class HallScene extends Phaser.Scene {
       interact: "E",
       interactAlt: "SPACE",
       stand: "ESC",
+      chat: "T",
     });
   }
 

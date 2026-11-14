@@ -10,6 +10,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 4 | The hall: movement, curved couch, 5 seats | done | this commit (feat: pixel hall scene with walking player) | 71/0 | 2026-11-08 |
 | 5 | Multiplayer hall with Colyseus | done | this commit (feat: multiplayer hall with server-validated movement) | 78/0 | 2026-11-08 |
 | 6 | Couch seats with server-side validation | done | this commit (feat: couch seats with server-side validation) | 92/0 | 2026-11-08 |
+| 6b | Seated-only terminal chat | done | this commit (feat: seated-only terminal chat space) | 110/0 | 2026-11-14 |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
 | 8 | Colossal Cave Adventure cabinet (original text adventure) | not started | - | - | - |
 | 9 | North-wall TV: synced YouTube IFrame playback | not started | - | - | - |
@@ -251,6 +252,41 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - A rejected sit is only reported on the socket as an "error" message; nothing in React or the canvas surfaces the reason yet.
   - The seat prompt is canvas text at 6px and follows the cushion anchor, not the player, so at the top of the arc it can overlap the couch back.
   - Seated visuals are still unverified in a browser: Phaser remains import-tested only.
+- Next prompt: 7
+
+### Prompt 6b - Seated-only terminal chat  (2026-11-14 10:52)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: seated-only terminal chat space"
+- What was built:
+  - shared/chatParser.js - parseInput(text) returns { type: "send", message } | { type: "quit" } | { type: "ignore" }; /t <message> sends (trimmed, capped at CHAT_MESSAGE_MAX = 280, empty is ignored), /q quits, everything else is ignored, commands are case-insensitive
+  - server/src/rooms/HallRoom.js - "chat" {text} accepted only from seated players, sanitised (HTML tags and control characters stripped, whitespace collapsed, 280 cap), rate limited to 5 messages per 10s per player, broadcast to seated clients only; "chat:open" replays the last 30 messages; history and rate windows are in-memory and never touch the database
+  - client/src/pages/ChatOverlay.jsx + styles.css - full-screen pure black monospace overlay, "username: message" lines that fade in one at a time with a text-shadow glow, bare input line with the native blinking caret, no buttons or borders; /t sends, /q closes, anything else is swallowed
+  - client/src/pages/Hall.jsx - "Press T to open chat" hint while seated, overlay mounted above the canvas, history/message/error lines kept in React state
+  - client/src/game/scenes/HallScene.js - T on a seat opens the terminal and asks the server for history, the scene drops movement/interaction input while it is open, standing up or losing the socket closes it, chat messages carried over the existing bridge
+- Tests: 110 passed, 0 failed - client 24, server 26, shared 60. New: shared/chatParser.test.js (9), client/src/pages/ChatOverlay.test.jsx (4), "terminal chat" describe in server/src/rooms/HallRoom.test.js (5). `npm run build --workspace client` exits 0.
+- Decisions made:
+  - The 281-character case truncates rather than rejects: the prompt allowed either, and truncating keeps one shared constant (CHAT_MESSAGE_MAX) as the single limit for client and server.
+  - "/t" is only recognised as its own token, so "/thello" is ignored. A prefix match would turn ordinary text starting with those two characters into a message.
+  - History needs a request: the client sends "chat:open" when the overlay opens and gets "chat:history" back, so a player who sits later receives what was said before they arrived without the server pushing chat to everyone.
+  - Standing players get the same "error" channel the sit/stand handlers already use ("Only seated players can chat."); the overlay renders it as a dimmed line instead of new UI.
+  - Rate limiting is a per-session sliding window of timestamps, pruned on every send, and cleared when a session drops: no timers, no extra state in the schema, nothing persisted.
+  - The rate-limit rejection happens after sanitising, so an empty or HTML-only message does not spend the player's budget.
+  - Chat state lives in React and travels over the existing gameBridge (chat:opened, chat:closed, chat:message, chat:history, chat:error, chat:send, chat:close); the Phaser scene stays the only thing that talks to the socket.
+- Deviations: none
+- Problems hit and fixes:
+  - `@colyseus/sdk: onMessage() not registered for type 'chat'` is printed by the SDK in the server tests for clients that deliberately have no chat listener (the standing player, and the sender's own client). Expected noise, not a failure; the tests assert on the messages that do arrive.
+- Manual checks for the human:
+  1. `npm run dev`, two windows signed in as two accounts, both walk to the couch and press E to sit.
+  2. "Press T to open chat" appears in both. Press T in one: the screen goes black with the prompt at the bottom.
+  3. Type `/t hello` and press Enter in window A: the line appears in A, then in B as "<username>: hello". WASD moves nothing while the overlay is open.
+  4. Type `hello` (no /t) and press Enter: nothing is sent. Type `/q`: the overlay closes and you are back on the sitting view.
+  5. Sit with a third account but do not press T: it sees no chat hint lines while A and B talk. Press T there and the earlier messages appear.
+  6. Send six messages quickly as one player: the sixth returns a dimmed "Too fast. Wait a moment." line and is not delivered.
+  7. Sit, press T, then close the window (or have the seat released): the overlay closes instead of lingering over a standing player.
+- Known issues / TODO for later:
+  - The overlay relies on the Phaser keyboard not capturing typed letters; this is only covered by the manual check above.
+  - Reconnecting resets a player's rate-limit window and the in-memory history is lost when the room is disposed.
+  - Chat is not scrollable with the wheel while typing; it auto-scrolls to the newest line instead.
 - Next prompt: 7
 
 ## Decisions and changes
