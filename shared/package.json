@@ -5,6 +5,9 @@
   "main": "./constants.js",
   "exports": {
     ".": "./constants.js",
+    "./adventure/data.js": "./adventure/data.js",
+    "./adventure/engine.js": "./adventure/engine.js",
+    "./adventure/parser.js": "./adventure/parser.js",
     "./arcade.js": "./arcade.js",
     "./character.js": "./character.js",
     "./chatParser.js": "./chatParser.js",

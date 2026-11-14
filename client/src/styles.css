@@ -407,6 +407,59 @@ input {
   color: var(--accent);
 }
 
+/* The cave terminal: black screen, green text, nothing else */
+.cave-game {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 760px;
+  height: calc(100vh - 160px);
+  padding: 16px;
+  background: #000;
+  color: var(--accent);
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  text-shadow: 0 0 6px currentColor;
+  border: 3px solid #34344a;
+}
+
+.cave-scroll {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.cave-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.cave-line {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.cave-input-line {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid rgba(124, 245, 196, 0.3);
+}
+
+.cave-input {
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-shadow: inherit;
+  outline: none;
+  caret-color: currentColor;
+}
+
 .game-canvas canvas {
   display: block;
   image-rendering: pixelated;

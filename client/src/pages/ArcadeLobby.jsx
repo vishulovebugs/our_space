@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import GameShell from "../components/GameShell.jsx";
+import CaveGame from "./CaveGame.jsx";
 
 /**
  * A cabinet's front door: a pixel-framed modal with Play and Close. Play opens
@@ -11,6 +12,14 @@ export default function ArcadeLobby({ arcade, onClose }) {
   const [playing, setPlaying] = useState(false);
 
   if (playing) {
+    if (arcade.id === "cave") {
+      return (
+        <GameShell title={arcade.name} onClose={onClose}>
+          <CaveGame onExit={onClose} />
+        </GameShell>
+      );
+    }
+
     return (
       <GameShell title={arcade.name} onClose={onClose}>
         <p className="arcade-coming-soon">Coming soon</p>

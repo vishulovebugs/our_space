@@ -13,7 +13,7 @@ Append-only. One entry per prompt/step. Newest at the bottom.
 | 6b | Seated-only terminal chat | done | this commit (feat: seated-only terminal chat space) | 110/0 | 2026-11-14 |
 | 6c | Arcade cabinet framework and lobby shell | done | this commit (feat: arcade cabinet framework and lobby shell) | 137/0 | 2026-11-14 |
 | 7 | Tankers cabinet (top-down tank battle) | not started | - | - | - |
-| 8 | Colossal Cave Adventure cabinet (original text adventure) | not started | - | - | - |
+| 8 | Colossal Cave Adventure cabinet (original text adventure) | done | this commit (feat: Colossal Cave-style text adventure arcade game) | 182/0 | 2026-11-14 |
 | 9 | North-wall TV: synced YouTube IFrame playback | done | this commit (feat: synced YouTube TV for seated players) | 124/0 | 2026-11-14 |
 | 10 | South door: exit logs the player out | not started | - | - | - |
 | 11 | Procedural pixel art pass | not started | - | - | - |
@@ -358,6 +358,46 @@ Append-only. One entry per prompt/step. Newest at the bottom.
   - Nothing is drawn for a player inside a cabinet: the sprite still stands next to the machine.
   - The lobby modal and the shell are unverified in a browser (tests cover GameShell only).
 - Next prompt: 7
+
+### Prompt 8 - Colossal Cave Adventure cabinet (original text adventure)  (2026-11-14 11:24)
+- Status: done
+- Commit: this commit (a commit cannot contain its own hash; short hash reported in the step's final report) - "feat: Colossal Cave-style text adventure arcade game"
+- What was built:
+  - shared/adventure/data.js - an original 25-room cave: a cabin with lamp, brass key and rations, a locked grate, the dark crawlway/narrows/pit, a chapel and crypt, a laboratory with an iron key and a note, a vault, a lake with a rowboat and an island, a waterfall, and a crystal grotto. Five treasures worth 20 points each, scored only on the cabin hearth.
+  - shared/adventure/parser.js - verb or verb+noun with synonyms and abbreviations, 4-letter truncation, direction shortcuts, and a friendly unknown answer
+  - shared/adventure/engine.js - createGame/step, JSON-serialisable state, deterministic seeded darkness deaths, a 30-turn lamp battery, turn counter, scoring and a win condition, SAVE/LOAD handed to the caller
+  - server/db/schema.sql - adventure_saves (one row per user, RLS: own row only) and an adventure_leaderboard view (username, score, turns)
+  - client/src/pages/CaveGame.jsx + ArcadeLobby - black/green terminal inside GameShell with scrollback, command history on the arrow keys, SAVE/LOAD through Supabase, and QUIT/Esc/Exit all leaving
+  - adventure.test-walkthrough.json - the 46-command winning route, used as a regression test
+- Tests: 182 passed, 0 failed - client 27, server 38, shared 117. New: shared/adventure/parser.test.js (9), data.test.js (8), engine.test.js (26), walkthrough.test.js (2). `npm run build --workspace client` exits 0.
+- Decisions made:
+  - The parser matches verbs by exact 4-letter form first, then by prefix, and a single letter only matches itself. Without that, "light" resolved to the L of LOOK and "xyzzy" resolved to LOOK through its X alias.
+  - TAKE looks at the floor before the pack, so "take key" in the laboratory picks up the iron key instead of complaining about the brass one already carried.
+  - Darkness is lethal only when you move out of an unlit dark room, with a 25% chance from a seeded LCG carried in the state. Deterministic by construction, so the walkthrough and the tests always see the same story.
+  - The lamp burns one unit per turn while lit (30 turns), and the walkthrough extinguishes it outside the dark sections. That makes battery management a real decision rather than scenery.
+  - Save and load are the client's job: the engine returns request: "save" | "load" and stays free of Supabase, so it remains pure and testable.
+  - The leaderboard is a SQL view over saves joined to profiles, because the prompt asked for a global view of best scores and no per-row sharing of the save itself.
+  - Every exit in the map is two-way, and a data test enforces it. The rowboat is an item, not an exit, so it cannot break that rule.
+- Deviations:
+  - The original game's magic words and room data are not copied; the map, prose and puzzles are new, as instructed.
+  - The leaderboard is stored as a view and is not yet rendered anywhere in the UI, since the prompt only asked for it to exist.
+- Problems hit and fixes:
+  - "light lamp" was parsed as LOOK because the one-letter L alias won the prefix match. Fix: exact match pass before the prefix pass, and no prefix matching for single letters.
+  - "take key" in the laboratory refused because the brass key was already carried. Fix: room items are resolved before inventory on TAKE.
+  - USE BOAT did nothing: the boat keyword "rowboat" was compared against the noun "boat" and the truncation broke the match. Fix: match any of the boat's keywords.
+- Manual checks for the human:
+  1. Apply the new SQL in server/db/schema.sql to Supabase, then `npm run dev`.
+  2. Sign in, walk to the CAVE cabinet on the right wall, press E, Play: a black screen with green text opens on the cabin description.
+  3. Type HELP, then N, S, LOOK, TAKE LAMP, LIGHT LAMP, UNLOCK GRATE, D and confirm the room descriptions follow the map.
+  4. In a dark room without the lamp, walk a few times: the "pitch black" warning appears and a few attempts end in a fall.
+  5. Take a treasure back to the cabin and DROP it: the score rises by 20 and does not rise again if you drop it twice.
+  6. Type SAVE, close with QUIT, reopen the cabinet, type LOAD: the room, inventory and score come back.
+  7. Press the up arrow in an empty input to recall earlier commands, and Esc to leave.
+- Known issues / TODO for later:
+  - CaveGame is only covered by the client build and the shared engine tests: no component test renders it, and the Supabase save path has never run against a real project (the SQL must be applied first).
+  - The leaderboard view exists but nothing displays it yet.
+  - QUIT inside the game closes the whole arcade UI and the player stays standing at the cabinet, which is intended but not marked in the hall.
+- Next prompt: 10
 
 ## Decisions and changes
 - 2026-11-08 - User instruction: commit after every phase (in addition to the one-commit-per-prompt rule in section 5). Applied from Prompt 0 onward.
